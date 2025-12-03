@@ -4,24 +4,43 @@ import {
   Alert, Spinner, Toast, ToastContainer, InputGroup
 } from 'react-bootstrap';
 import { FaPlus, FaExclamationTriangle, FaSearch } from 'react-icons/fa';
+import { useLocation, useNavigate } from 'react-router-dom';
 import CollaboratorTable from '../components/Collaborators/CollaboratorTable';
 import CollaboratorForm from '../components/Collaborators/CollaboratorForm';
 import { collaboratorService } from '../services/api';
 
 const CollaboratorsPage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryParams = new URLSearchParams(location.search);
+
   const [collaborators, setCollaborators] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingCollaborator, setEditingCollaborator] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [toast, setToast] = useState({ show: false, message: '', variant: 'success' });
-  const loadCollaborators = useCallback(async () => {
-    console.log('🔍 Cargando colaboradores...');
-    console.log('   Search:', searchTerm);
-    console.log('   Status:', statusFilter);
+  const [searchTerm, setSearchTerm] = useState(queryParams.get('search') || '');
+  const [statusFilter, setStatusFilter] = useState(queryParams.get('statusFilter') || 'all');
 
+  const [toast, setToast] = useState({ show: false, message: '', variant: 'success' });
+
+  useEffect(() => {
+    const search = queryParams.get('search');
+    const status = queryParams.get('statusFilter');
+
+    if (search !== null) setSearchTerm(search);
+    if (status !== null) setStatusFilter(status);
+
+    const action = queryParams.get('action');
+    if (action === 'new') {
+      setShowModal(true);
+      const newParams = new URLSearchParams(queryParams);
+      newParams.delete('action');
+      navigate({ search: newParams.toString() }, { replace: true });
+    }
+  }, [location.search, navigate]);
+
+  const loadCollaborators = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -30,13 +49,9 @@ const CollaboratorsPage = () => {
       if (searchTerm.trim()) params.search = searchTerm.trim();
       if (statusFilter !== 'all') params.status = statusFilter;
 
-      console.log('📤 Parámetros:', params);
       const data = await collaboratorService.getAll(params);
-      console.log('✅ Recibidos:', data.length, 'colaboradores');
-
       setCollaborators(data);
     } catch (err) {
-      console.error('❌ Error:', err);
       setError(err.message || 'Error al cargar colaboradores');
       setCollaborators([]);
     } finally {
@@ -52,9 +67,37 @@ const CollaboratorsPage = () => {
     return () => clearTimeout(timer);
   }, [searchTerm, statusFilter, loadCollaborators]);
 
-  const handleSearchChange = (e) => setSearchTerm(e.target.value);
-  const handleStatusChange = (e) => setStatusFilter(e.target.value);
-  const clearSearch = () => setSearchTerm('');
+  const updateURLParams = (newSearch, newStatus) => {
+    const params = new URLSearchParams();
+
+    if (newSearch) params.set('search', newSearch);
+    if (newStatus && newStatus !== 'all') params.set('statusFilter', newStatus);
+
+    navigate({ search: params.toString() });
+  };
+
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    updateURLParams(value, statusFilter);
+  };
+
+  const handleStatusChange = (e) => {
+    const value = e.target.value;
+    setStatusFilter(value);
+    updateURLParams(searchTerm, value);
+  };
+
+  const clearSearch = () => {
+    setSearchTerm('');
+    updateURLParams('', statusFilter);
+  };
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    navigate({ search: '' });
+  };
 
   const handleSaveCollaborator = async (formData) => {
     try {
@@ -85,6 +128,26 @@ const CollaboratorsPage = () => {
     }
   };
 
+  const handleCompleteOnboarding = async (id, type) => {
+    if (window.confirm(`¿Marcar onboarding ${type} como completado?`)) {
+      try {
+        await collaboratorService.completeOnboarding(id, type);
+        setToast({
+          show: true,
+          message: `✅ Onboarding ${type} completado`,
+          variant: 'success'
+        });
+        loadCollaborators();
+      } catch (err) {
+        setToast({
+          show: true,
+          message: `❌ Error al completar onboarding ${type}`,
+          variant: 'danger'
+        });
+      }
+    }
+  };
+
   return (
     <Container fluid>
       {/* Toast */}
@@ -104,9 +167,9 @@ const CollaboratorsPage = () => {
         </Button>
       </div>
 
-      {/* Filtros */}
+      {/* Filtros SIMPLIFICADOS */}
       <Row className="mb-4">
-        <Col md={8}>
+        <Col md={6}>
           <InputGroup>
             <InputGroup.Text><FaSearch /></InputGroup.Text>
             <Form.Control
@@ -127,6 +190,13 @@ const CollaboratorsPage = () => {
             <option value="in_progress">En progreso</option>
             <option value="completed">Completados</option>
           </Form.Select>
+        </Col>
+        <Col md={2}>
+          {(searchTerm || statusFilter !== 'all') && (
+            <Button variant="outline-secondary" onClick={clearAllFilters} className="w-100">
+              Limpiar filtros
+            </Button>
+          )}
         </Col>
       </Row>
 
@@ -158,11 +228,15 @@ const CollaboratorsPage = () => {
             setShowModal(true);
           }}
           onDelete={handleDelete}
+          onCompleteOnboarding={handleCompleteOnboarding}
         />
       )}
 
       {/* Modal */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg">
+      <Modal show={showModal} onHide={() => {
+        setShowModal(false);
+        setEditingCollaborator(null);
+      }} size="lg">
         <Modal.Header closeButton>
           <Modal.Title>{editingCollaborator ? 'Editar' : 'Nuevo'} Colaborador</Modal.Title>
         </Modal.Header>
@@ -170,7 +244,10 @@ const CollaboratorsPage = () => {
           <CollaboratorForm
             initialData={editingCollaborator}
             onSubmit={handleSaveCollaborator}
-            onCancel={() => setShowModal(false)}
+            onCancel={() => {
+              setShowModal(false);
+              setEditingCollaborator(null);
+            }}
           />
         </Modal.Body>
       </Modal>

@@ -30,7 +30,8 @@ const dbConfig = {
   port: parseInt(process.env.DB_PORT) || 3307,
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || 'rootpassword',
-  database: process.env.DB_NAME || 'onboarding_db'
+  database: process.env.DB_NAME || 'onboarding_db',
+  timezone: '+00:00'
 };
 
 console.log('🔧 Configuración MySQL:', {
@@ -152,9 +153,11 @@ app.put('/api/collaborators/:id', async (req, res) => {
       technical_onboarding_date
     } = req.body;
 
-    if (!full_name && !email && !hire_date &&
-      !welcome_onboarding_status && !technical_onboarding_status &&
-      technical_onboarding_date === undefined) {
+    const hasUpdates = full_name !== undefined || email !== undefined ||
+      hire_date !== undefined || welcome_onboarding_status !== undefined ||
+      technical_onboarding_status !== undefined || technical_onboarding_date !== undefined;
+
+    if (!hasUpdates) {
       return res.status(400).json({ error: 'No hay datos para actualizar' });
     }
 
@@ -185,11 +188,20 @@ app.put('/api/collaborators/:id', async (req, res) => {
     if (technical_onboarding_status !== undefined) {
       updates.push('technical_onboarding_status = ?');
       values.push(technical_onboarding_status);
+
+      if (technical_onboarding_status === 'completed' && technical_onboarding_date === undefined) {
+        updates.push('technical_onboarding_date = CURDATE()');
+        console.log('📅 Agregando fecha automática (CURDATE) para técnico completado');
+      }
     }
 
     if (technical_onboarding_date !== undefined) {
-      updates.push('technical_onboarding_date = ?');
-      values.push(technical_onboarding_date);
+      if (technical_onboarding_date === null || technical_onboarding_date === '') {
+        updates.push('technical_onboarding_date = NULL');
+      } else {
+        updates.push('technical_onboarding_date = ?');
+        values.push(technical_onboarding_date);
+      }
     }
 
     values.push(req.params.id);
@@ -245,22 +257,16 @@ app.post('/api/collaborators/:id/complete-onboarding', async (req, res) => {
     const statusField = type === 'welcome' ? 'welcome_onboarding_status' : 'technical_onboarding_status';
     const dateField = type === 'technical' ? 'technical_onboarding_date' : null;
 
-    let query = `UPDATE collaborators SET ${statusField} = 'completed'`;
-    const values = [];
-
+    let query;
     if (dateField) {
-      query += `, ${dateField} = ?`;
-      values.push(new Date().toISOString().split('T')[0]);
+      query = `UPDATE collaborators SET ${statusField} = 'completed', ${dateField} = CURDATE() WHERE id = ?`;
+      console.log('📅 Usando CURDATE() para fecha técnica');
+    } else {
+      query = `UPDATE collaborators SET ${statusField} = 'completed' WHERE id = ?`;
     }
 
-    query += ' WHERE id = ?';
-    values.push(req.params.id);
-
-    console.log('📋 Query:', query);
-    console.log('🎯 Values:', values);
-
     const connection = await mysql.createConnection(dbConfig);
-    const [result] = await connection.execute(query, values);
+    const [result] = await connection.execute(query, [req.params.id]);
     await connection.end();
 
     if (result.affectedRows === 0) {
@@ -275,7 +281,7 @@ app.post('/api/collaborators/:id/complete-onboarding', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error:', error.message);
+    console.error('Error:', error.message);
     res.status(500).json({
       error: 'Error al completar onboarding'
     });
@@ -350,12 +356,12 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error('🔥 ERROR:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Backend en http://localhost:${PORT}`);
-  console.log(`📋 Colaboradores: http://localhost:${PORT}/api/collaborators`);
-  console.log(`🗄️  MySQL: ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
+  console.log(`Backend en http://localhost:${PORT}`);
+  console.log(`Colaboradores: http://localhost:${PORT}/api/collaborators`);
+  console.log(`MySQL: ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
+  console.log('IMPORTANTE: CURDATE() se usará para fechas locales del servidor MySQL');
 });

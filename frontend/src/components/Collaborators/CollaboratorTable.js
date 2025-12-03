@@ -2,11 +2,11 @@ import React from 'react';
 import { Table, Button, Badge, Dropdown } from 'react-bootstrap';
 import { FaEdit, FaTrash, FaCheck, FaEllipsisV } from 'react-icons/fa';
 
-const CollaboratorTable = ({ 
-  collaborators, 
-  onEdit, 
-  onDelete, 
-  onCompleteOnboarding 
+const CollaboratorTable = ({
+  collaborators,
+  onEdit,
+  onDelete,
+  onCompleteOnboarding
 }) => {
   const getStatusBadge = (status) => {
     const config = {
@@ -14,91 +14,104 @@ const CollaboratorTable = ({
       in_progress: { label: 'En Progreso', variant: 'info' },
       completed: { label: 'Completado', variant: 'success' }
     };
-    
+
     const { label, variant } = config[status] || { label: status, variant: 'secondary' };
-    
+
     return <Badge bg={variant}>{label}</Badge>;
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('es-ES');
+    try {
+      return new Date(dateString).toLocaleDateString('es-ES');
+    } catch (error) {
+      return '-';
+    }
+  };
+
+  const handleAction = (action, ...args) => {
+    if (typeof action === 'function') {
+      action(...args);
+    } else {
+      console.error('La acción no es una función');
+    }
   };
 
   return (
-    <Table hover responsive className="bg-white shadow-sm">
-      <thead>
-        <tr>
-          <th>Nombre Completo</th>
-          <th>Email</th>
-          <th>Fecha Ingreso</th>
-          <th>Onboarding Bienvenida</th>
-          <th>Onboarding Técnico</th>
-          <th>Fecha Técnico</th>
-          <th>Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        {collaborators.length === 0 ? (
+    <div className="table-responsive">
+      <Table hover responsive className="bg-white shadow-sm">
+        <thead>
           <tr>
-            <td colSpan="7" className="text-center py-4 text-muted">
-              No hay colaboradores registrados
-            </td>
+            <th>Nombre Completo</th>
+            <th>Email</th>
+            <th>Fecha Ingreso</th>
+            <th>Onboarding Bienvenida</th>
+            <th>Onboarding Técnico</th>
+            <th>Fecha Técnico</th>
+            <th>Acciones</th>
           </tr>
-        ) : (
-          collaborators.map((collaborator) => (
-            <tr key={collaborator.id}>
-              <td>{collaborator.full_name}</td>
-              <td>{collaborator.email}</td>
-              <td>{formatDate(collaborator.hire_date)}</td>
-              <td>{getStatusBadge(collaborator.welcome_onboarding_status)}</td>
-              <td>{getStatusBadge(collaborator.technical_onboarding_status)}</td>
-              <td>{formatDate(collaborator.technical_onboarding_date)}</td>
-              <td>
-                <Dropdown>
-                  <Dropdown.Toggle variant="light" size="sm" id="dropdown-basic">
-                    <FaEllipsisV />
-                  </Dropdown.Toggle>
-                  
-                  <Dropdown.Menu>
-                    <Dropdown.Item onClick={() => onEdit(collaborator)}>
-                      <FaEdit className="me-2" />
-                      Editar
-                    </Dropdown.Item>
-                    
-                    <Dropdown.Item 
-                      onClick={() => onCompleteOnboarding(collaborator.id, 'welcome')}
-                      disabled={collaborator.welcome_onboarding_status === 'completed'}
-                    >
-                      <FaCheck className="me-2" />
-                      Completar Bienvenida
-                    </Dropdown.Item>
-                    
-                    <Dropdown.Item 
-                      onClick={() => onCompleteOnboarding(collaborator.id, 'technical')}
-                      disabled={collaborator.technical_onboarding_status === 'completed'}
-                    >
-                      <FaCheck className="me-2" />
-                      Completar Técnico
-                    </Dropdown.Item>
-                    
-                    <Dropdown.Divider />
-                    
-                    <Dropdown.Item 
-                      onClick={() => onDelete(collaborator.id)}
-                      className="text-danger"
-                    >
-                      <FaTrash className="me-2" />
-                      Eliminar
-                    </Dropdown.Item>
-                  </Dropdown.Menu>
-                </Dropdown>
+        </thead>
+        <tbody>
+          {collaborators.length === 0 ? (
+            <tr>
+              <td colSpan="7" className="text-center py-4 text-muted">
+                No hay colaboradores registrados
               </td>
             </tr>
-          ))
-        )}
-      </tbody>
-    </Table>
+          ) : (
+            collaborators.map((collaborator) => (
+              <tr key={collaborator.id}>
+                <td>{collaborator.full_name}</td>
+                <td>{collaborator.email}</td>
+                <td>{formatDate(collaborator.hire_date)}</td>
+                <td>{getStatusBadge(collaborator.welcome_onboarding_status)}</td>
+                <td>{getStatusBadge(collaborator.technical_onboarding_status)}</td>
+                <td>{formatDate(collaborator.technical_onboarding_date)}</td>
+                <td>
+                  <Dropdown>
+                    <Dropdown.Toggle variant="light" size="sm" id={`dropdown-${collaborator.id}`}>
+                      <FaEllipsisV />
+                    </Dropdown.Toggle>
+
+                    <Dropdown.Menu>
+                      <Dropdown.Item onClick={() => handleAction(onEdit, collaborator)}>
+                        <FaEdit className="me-2 text-primary" />
+                        <span className="text-primary">Editar</span>
+                      </Dropdown.Item>
+
+                      <Dropdown.Item
+                        onClick={() => handleAction(onCompleteOnboarding, collaborator.id, 'welcome')}
+                        disabled={collaborator.welcome_onboarding_status === 'completed'}
+                      >
+                        <FaCheck className="me-2 text-success" />
+                        <span className="text-success">Completar Bienvenida</span>
+                      </Dropdown.Item>
+
+                      <Dropdown.Item
+                        onClick={() => handleAction(onCompleteOnboarding, collaborator.id, 'technical')}
+                        disabled={collaborator.technical_onboarding_status === 'completed'}
+                      >
+                        <FaCheck className="me-2 text-info" />
+                        <span className="text-info">Completar Técnico</span>
+                      </Dropdown.Item>
+
+                      <Dropdown.Divider />
+
+                      <Dropdown.Item
+                        onClick={() => handleAction(onDelete, collaborator.id)}
+                      >
+                        <FaTrash className="me-2 text-danger" />
+                        <span className="text-danger">Eliminar</span>
+                      </Dropdown.Item>
+                    </Dropdown.Menu>
+                  </Dropdown>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </Table>
+    </div>
   );
 };
 
