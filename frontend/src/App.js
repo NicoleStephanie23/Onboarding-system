@@ -9,6 +9,8 @@ import CalendarPage from './pages/CalendarPage';
 import AlertsPage from './pages/AlertsPage';
 import OnboardingTechnicalPage from './pages/OnboardingTechnicalPage';
 import OnboardingWelcomePage from './pages/OnboardingWelcomePage';
+import './styles/App.css';
+import './styles/calendar.css';
 
 function App() {
   return (
