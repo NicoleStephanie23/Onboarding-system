@@ -10,7 +10,8 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors({
   origin: 'http://localhost:3000',
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 
 app.use(express.json());
@@ -18,6 +19,9 @@ app.use(helmet());
 app.use(morgan('dev'));
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  if (Object.keys(req.query).length > 0) {
+    console.log('   Query params:', req.query);
+  }
   next();
 });
 
@@ -38,11 +42,39 @@ console.log('🔧 Configuración MySQL:', {
 
 app.get('/api/collaborators', async (req, res) => {
   console.log('📋 GET /api/collaborators');
+  console.log('🔍 Query params:', req.query);
+
   try {
+    const { search, status } = req.query;
+
+    let query = 'SELECT * FROM collaborators WHERE 1=1';
+    const params = [];
+
+    if (search && search.trim() !== '') {
+      const searchTerm = `%${search.trim()}%`;
+      query += ' AND (full_name LIKE ? OR email LIKE ?)';
+      params.push(searchTerm, searchTerm);
+      console.log(`🔎 Búsqueda: "${search}"`);
+    }
+
+    if (status && status !== 'all') {
+      query += ' AND (welcome_onboarding_status = ? OR technical_onboarding_status = ?)';
+      params.push(status, status);
+      console.log(`🏷️  Estado: "${status}"`);
+    }
+
+    query += ' ORDER BY hire_date DESC';
+
+    console.log('📋 Query:', query);
+    console.log('🎯 Params:', params);
+
     const connection = await mysql.createConnection(dbConfig);
-    const [rows] = await connection.execute('SELECT * FROM collaborators ORDER BY hire_date DESC');
+    const [rows] = await connection.execute(query, params);
     await connection.end();
+
+    console.log(`✅ ${rows.length} colaboradores`);
     res.json(rows);
+
   } catch (error) {
     console.error('❌ Error:', error.message);
     res.status(500).json({ error: 'Error al obtener colaboradores' });
@@ -50,6 +82,8 @@ app.get('/api/collaborators', async (req, res) => {
 });
 
 app.get('/api/collaborators/:id', async (req, res) => {
+  console.log(`🔍 GET /api/collaborators/${req.params.id}`);
+
   try {
     const connection = await mysql.createConnection(dbConfig);
     const [rows] = await connection.execute(
@@ -57,14 +91,22 @@ app.get('/api/collaborators/:id', async (req, res) => {
       [req.params.id]
     );
     await connection.end();
-    if (rows.length === 0) return res.status(404).json({ error: 'Colaborador no encontrado' });
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Colaborador no encontrado' });
+    }
+
     res.json(rows[0]);
+
   } catch (error) {
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
 app.post('/api/collaborators', async (req, res) => {
+  console.log('➕ POST /api/collaborators');
+  console.log('📦 Data:', req.body);
+
   try {
     const { full_name, email, hire_date } = req.body;
 
@@ -97,38 +139,152 @@ app.post('/api/collaborators', async (req, res) => {
 });
 
 app.put('/api/collaborators/:id', async (req, res) => {
-  try {
-    const { full_name, email, hire_date } = req.body;
+  console.log(`✏️  PUT /api/collaborators/${req.params.id}`);
+  console.log('📦 Data:', req.body);
 
-    if (!full_name && !email && !hire_date) {
+  try {
+    const {
+      full_name,
+      email,
+      hire_date,
+      welcome_onboarding_status,
+      technical_onboarding_status,
+      technical_onboarding_date
+    } = req.body;
+
+    if (!full_name && !email && !hire_date &&
+      !welcome_onboarding_status && !technical_onboarding_status &&
+      technical_onboarding_date === undefined) {
       return res.status(400).json({ error: 'No hay datos para actualizar' });
     }
 
     const connection = await mysql.createConnection(dbConfig);
-
     const updates = [];
     const values = [];
 
-    if (full_name) { updates.push('full_name = ?'); values.push(full_name); }
-    if (email) { updates.push('email = ?'); values.push(email); }
-    if (hire_date) { updates.push('hire_date = ?'); values.push(hire_date); }
+    if (full_name !== undefined) {
+      updates.push('full_name = ?');
+      values.push(full_name);
+    }
+
+    if (email !== undefined) {
+      updates.push('email = ?');
+      values.push(email);
+    }
+
+    if (hire_date !== undefined) {
+      updates.push('hire_date = ?');
+      values.push(hire_date);
+    }
+
+    if (welcome_onboarding_status !== undefined) {
+      updates.push('welcome_onboarding_status = ?');
+      values.push(welcome_onboarding_status);
+    }
+
+    if (technical_onboarding_status !== undefined) {
+      updates.push('technical_onboarding_status = ?');
+      values.push(technical_onboarding_status);
+    }
+
+    if (technical_onboarding_date !== undefined) {
+      updates.push('technical_onboarding_date = ?');
+      values.push(technical_onboarding_date);
+    }
 
     values.push(req.params.id);
     const query = `UPDATE collaborators SET ${updates.join(', ')} WHERE id = ?`;
 
+    console.log('📋 Query:', query);
+    console.log('🎯 Values:', values);
+
     const [result] = await connection.execute(query, values);
     await connection.end();
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Colaborador no encontrado' });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Colaborador no encontrado' });
+    }
 
-    res.json({ success: true });
+    console.log(`✅ ${result.affectedRows} fila(s) actualizada(s)`);
+
+    res.json({
+      success: true,
+      message: 'Colaborador actualizado exitosamente'
+    });
 
   } catch (error) {
-    res.status(500).json({ error: 'Error al actualizar colaborador' });
+    console.error('❌ Error en PUT:', error.message);
+
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        error: 'Email duplicado',
+        message: 'El email ya está en uso por otro colaborador'
+      });
+    }
+
+    res.status(500).json({
+      error: 'Error al actualizar colaborador',
+      message: error.message
+    });
+  }
+});
+
+app.post('/api/collaborators/:id/complete-onboarding', async (req, res) => {
+  console.log(`✅ POST /api/collaborators/${req.params.id}/complete-onboarding`);
+  console.log('📦 Data:', req.body);
+
+  try {
+    const { type } = req.body;
+
+    if (!type || !['welcome', 'technical'].includes(type)) {
+      return res.status(400).json({
+        error: 'Tipo de onboarding inválido. Use "welcome" o "technical"'
+      });
+    }
+
+    const statusField = type === 'welcome' ? 'welcome_onboarding_status' : 'technical_onboarding_status';
+    const dateField = type === 'technical' ? 'technical_onboarding_date' : null;
+
+    let query = `UPDATE collaborators SET ${statusField} = 'completed'`;
+    const values = [];
+
+    if (dateField) {
+      query += `, ${dateField} = ?`;
+      values.push(new Date().toISOString().split('T')[0]);
+    }
+
+    query += ' WHERE id = ?';
+    values.push(req.params.id);
+
+    console.log('📋 Query:', query);
+    console.log('🎯 Values:', values);
+
+    const connection = await mysql.createConnection(dbConfig);
+    const [result] = await connection.execute(query, values);
+    await connection.end();
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Colaborador no encontrado' });
+    }
+
+    console.log(`✅ Onboarding ${type} completado`);
+
+    res.json({
+      success: true,
+      message: `Onboarding ${type} marcado como completado`
+    });
+
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+    res.status(500).json({
+      error: 'Error al completar onboarding'
+    });
   }
 });
 
 app.delete('/api/collaborators/:id', async (req, res) => {
+  console.log(`🗑️  DELETE /api/collaborators/${req.params.id}`);
+
   try {
     const connection = await mysql.createConnection(dbConfig);
     const [result] = await connection.execute(
@@ -137,19 +293,55 @@ app.delete('/api/collaborators/:id', async (req, res) => {
     );
     await connection.end();
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Colaborador no encontrado' });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Colaborador no encontrado' });
+    }
 
-    res.json({ success: true });
+    res.json({
+      success: true,
+      message: 'Colaborador eliminado exitosamente'
+    });
 
   } catch (error) {
     res.status(500).json({ error: 'Error al eliminar colaborador' });
   }
 });
 
+app.get('/api/health', async (req, res) => {
+  try {
+    const connection = await mysql.createConnection(dbConfig);
+    await connection.execute('SELECT 1');
+    await connection.end();
+
+    res.json({
+      status: 'OK',
+      mysql: 'connected'
+    });
+
+  } catch (error) {
+    res.json({
+      status: 'WARNING',
+      mysql: 'disconnected',
+      error: error.message
+    });
+  }
+});
+
 app.get('/', (req, res) => {
   res.json({
     name: 'Onboarding System API',
-    version: '1.0.0'
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      collaborators: {
+        list: 'GET /api/collaborators?search=&status=',
+        get: 'GET /api/collaborators/:id',
+        create: 'POST /api/collaborators',
+        update: 'PUT /api/collaborators/:id',
+        delete: 'DELETE /api/collaborators/:id',
+        completeOnboarding: 'POST /api/collaborators/:id/complete-onboarding'
+      }
+    }
   });
 });
 
@@ -158,10 +350,12 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error('🔥 ERROR NO MANEJADO:', err);
+  console.error('🔥 ERROR:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Backend ejecutándose en http://localhost:${PORT}`);
+  console.log(`🚀 Backend en http://localhost:${PORT}`);
+  console.log(`📋 Colaboradores: http://localhost:${PORT}/api/collaborators`);
+  console.log(`🗄️  MySQL: ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
 });
