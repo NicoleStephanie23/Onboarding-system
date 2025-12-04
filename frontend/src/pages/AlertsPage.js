@@ -6,33 +6,65 @@ import {
 import {
   FaBell, FaEnvelope, FaPaperPlane, FaCheck,
   FaCalendarDay, FaUser, FaClock, FaExclamationTriangle,
-  FaCalendarAlt, FaTrash
+  FaCalendarAlt, FaTrash, FaPlus, FaSync
 } from 'react-icons/fa';
-import { alertService, calendarService } from '../services/api';
+import { alertService } from '../services/api';
+import { eventService } from '../services/eventService';
 
 const AlertsPage = () => {
   const [alerts, setAlerts] = useState([]);
+  const [localEvents, setLocalEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showTestModal, setShowTestModal] = useState(false);
   const [testEmail, setTestEmail] = useState('');
+  const [stats, setStats] = useState({
+    total: 0,
+    upcoming: 0,
+    today: 0,
+    next7Days: 0
+  });
 
-  const loadAlerts = async () => {
+  useEffect(() => {
+    loadLocalEvents();
+
+    const unsubscribe = eventService.subscribe((events) => {
+      setLocalEvents(events);
+      updateStats(events);
+    });
+
+    loadBackendAlerts();
+
+    return () => unsubscribe();
+  }, []);
+
+  const loadLocalEvents = () => {
+    try {
+      const events = eventService.getAllEvents();
+      setLocalEvents(events);
+      updateStats(events);
+      console.log(`📊 ${events.length} eventos cargados desde memoria`);
+    } catch (error) {
+      console.error('Error cargando eventos locales:', error);
+    }
+  };
+
+  const loadBackendAlerts = async () => {
     try {
       setLoading(true);
       const data = await alertService.getUpcoming();
       setAlerts(data);
     } catch (error) {
-      console.error('Error cargando alertas:', error);
-      setMessage({ type: 'danger', text: error.error || 'Error cargando alertas' });
+      console.log('ℹ️ No se pudieron cargar alertas del backend:', error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadAlerts();
-  }, []);
+  const updateStats = (events) => {
+    const stats = eventService.getStats();
+    setStats(stats);
+  };
 
   const handleSendTestAlert = async () => {
     if (!testEmail.trim()) {
@@ -61,7 +93,7 @@ const AlertsPage = () => {
   };
 
   const getAlertStatus = (event) => {
-    const daysUntil = getDaysUntil(event.start_date);
+    const daysUntil = getDaysUntil(event.start_date || event.startDate);
 
     if (daysUntil < 0) return { label: 'Completado', variant: 'secondary' };
     if (daysUntil === 0) return { label: 'Hoy', variant: 'danger' };
@@ -83,14 +115,43 @@ const AlertsPage = () => {
     if (window.confirm('¿Enviar alerta manualmente para este evento?')) {
       try {
         setLoading(true);
-        setMessage({ type: 'success', text: 'Alerta manual enviada' });
+        setMessage({ type: 'success', text: '✅ Alerta manual enviada' });
       } catch (error) {
-        setMessage({ type: 'danger', text: 'Error enviando alerta' });
+        setMessage({ type: 'danger', text: '❌ Error enviando alerta' });
       } finally {
         setLoading(false);
       }
     }
   };
+
+  const handleDeleteEvent = (id) => {
+    if (window.confirm('¿Eliminar este evento?')) {
+      const deleted = eventService.deleteEvent(id);
+      if (deleted) {
+        setMessage({ type: 'success', text: '✅ Evento eliminado' });
+      } else {
+        setMessage({ type: 'danger', text: '❌ Error eliminando evento' });
+      }
+    }
+  };
+
+  const handleRefresh = () => {
+    loadLocalEvents();
+    loadBackendAlerts();
+    setMessage({ type: 'info', text: '✅ Datos actualizados' });
+  };
+
+  const handleClearAll = () => {
+    if (window.confirm('¿Estás seguro de eliminar TODOS los eventos? Esta acción no se puede deshacer.')) {
+      eventService.clearAll();
+      setMessage({ type: 'warning', text: '🗑️ Todos los eventos han sido eliminados' });
+    }
+  };
+
+  const allEvents = [...localEvents, ...alerts];
+  const uniqueEvents = allEvents.filter((event, index, self) =>
+    index === self.findIndex((e) => e.id === event.id)
+  );
 
   return (
     <Container fluid>
@@ -110,17 +171,29 @@ const AlertsPage = () => {
       <Card className="mb-4 dashboard-card">
         <Card.Body>
           <Row className="align-items-center">
-            <Col md={8}>
+            <Col md={6}>
               <h5 className="mb-2">Alertas Automáticas de Eventos</h5>
               <p className="text-muted mb-0">
-                El sistema envía alertas automáticas cuando se crean eventos y 7 días antes de su inicio.
+                Eventos creados en Calendario aparecen aquí automáticamente.
               </p>
             </Col>
-            <Col md={4} className="text-end">
-              <Button variant="primary" onClick={() => setShowTestModal(true)}>
-                <FaPaperPlane className="me-2" />
-                Probar Sistema
-              </Button>
+            <Col md={6} className="text-end">
+              <div className="d-flex gap-2 justify-content-end">
+                <Button variant="outline-secondary" onClick={handleRefresh}>
+                  <FaSync className="me-2" />
+                  Actualizar
+                </Button>
+                <Button variant="primary" onClick={() => setShowTestModal(true)}>
+                  <FaPaperPlane className="me-2" />
+                  Probar Sistema
+                </Button>
+                {localEvents.length > 0 && (
+                  <Button variant="outline-danger" onClick={handleClearAll}>
+                    <FaTrash className="me-2" />
+                    Limpiar Todo
+                  </Button>
+                )}
+              </div>
             </Col>
           </Row>
         </Card.Body>
@@ -131,38 +204,36 @@ const AlertsPage = () => {
         <Col md={3}>
           <Card className="text-center">
             <Card.Body>
-              <h3 className="text-primary">{alerts.length}</h3>
-              <Card.Text>Eventos con Alertas</Card.Text>
+              <h3 className="text-primary">{stats.total}</h3>
+              <Card.Text>Total Eventos</Card.Text>
+              <small className="text-muted">En memoria</small>
             </Card.Body>
           </Card>
         </Col>
         <Col md={3}>
           <Card className="text-center">
             <Card.Body>
-              <h3 className="text-warning">
-                {alerts.filter(a => getDaysUntil(a.start_date) <= 7 && getDaysUntil(a.start_date) > 0).length}
-              </h3>
+              <h3 className="text-warning">{stats.upcoming}</h3>
+              <Card.Text>Próximos 30 días</Card.Text>
+              <small className="text-muted">Eventos programados</small>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="text-center">
+            <Card.Body>
+              <h3 className="text-success">{uniqueEvents.length}</h3>
+              <Card.Text>Total General</Card.Text>
+              <small className="text-muted">Local + Backend</small>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="text-center">
+            <Card.Body>
+              <h3 className="text-info">{stats.next7Days}</h3>
               <Card.Text>Próximos 7 días</Card.Text>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3}>
-          <Card className="text-center">
-            <Card.Body>
-              <h3 className="text-success">
-                {alerts.filter(a => a.responsible_email).length}
-              </h3>
-              <Card.Text>Con Responsable</Card.Text>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3}>
-          <Card className="text-center">
-            <Card.Body>
-              <h3 className="text-info">
-                {alerts.filter(a => a.type === 'journey_to_cloud').length}
-              </h3>
-              <Card.Text>Journey to Cloud</Card.Text>
+              <small className="text-muted">Alertas próximas</small>
             </Card.Body>
           </Card>
         </Col>
@@ -171,7 +242,12 @@ const AlertsPage = () => {
       {/* Tabla de alertas */}
       <Card className="dashboard-card">
         <Card.Header className="bg-white">
-          <h5 className="mb-0">Alertas Programadas</h5>
+          <div className="d-flex justify-content-between align-items-center">
+            <h5 className="mb-0">Eventos y Alertas Programadas</h5>
+            <Badge bg="info">
+              {uniqueEvents.length} evento{uniqueEvents.length !== 1 ? 's' : ''}
+            </Badge>
+          </div>
         </Card.Header>
         <Card.Body>
           {loading ? (
@@ -179,11 +255,21 @@ const AlertsPage = () => {
               <Spinner animation="border" variant="primary" />
               <p className="mt-2">Cargando alertas...</p>
             </div>
-          ) : alerts.length === 0 ? (
+          ) : uniqueEvents.length === 0 ? (
             <div className="text-center py-4 text-muted">
               <FaBell size={48} className="mb-3" />
-              <p>No hay alertas programadas</p>
-              <p className="small">Las alertas aparecerán automáticamente al crear eventos en el calendario</p>
+              <h5>No hay eventos programados</h5>
+              <p className="small">
+                Los eventos creados en el Calendario aparecerán automáticamente aquí.
+              </p>
+              <Button
+                variant="primary"
+                onClick={() => window.location.href = '/calendar'}
+                className="mt-2"
+              >
+                <FaPlus className="me-2" />
+                Ir a Calendario para crear evento
+              </Button>
             </div>
           ) : (
             <Table hover responsive>
@@ -194,31 +280,34 @@ const AlertsPage = () => {
                   <th>Fecha</th>
                   <th>Días Restantes</th>
                   <th>Responsable</th>
-                  <th>Estado Alerta</th>
+                  <th>Origen</th>
+                  <th>Estado</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {alerts.map((alert) => {
-                  const daysUntil = getDaysUntil(alert.start_date);
-                  const status = getAlertStatus(alert);
+                {uniqueEvents.map((event) => {
+                  const daysUntil = getDaysUntil(event.start_date || event.startDate);
+                  const status = getAlertStatus(event);
+                  const isLocal = event.id > 1000000000000;
 
                   return (
-                    <tr key={alert.id}>
+                    <tr key={event.id}>
                       <td>
-                        <strong>{alert.title}</strong>
+                        <strong>{event.title}</strong>
                         <br />
-                        <small className="text-muted">{alert.description}</small>
+                        <small className="text-muted">{event.description}</small>
                       </td>
                       <td>
-                        <Badge bg={alert.type === 'journey_to_cloud' ? 'primary' : 'success'}>
-                          {alert.type === 'journey_to_cloud' ? 'Journey to Cloud' : 'Capítulo'}
+                        <Badge bg={event.type === 'journey_to_cloud' ? 'primary' : 'success'}>
+                          {event.type === 'journey_to_cloud' ? 'Journey to Cloud' :
+                            event.type === 'chapter_technical' ? 'Capítulo' : 'General'}
                         </Badge>
                       </td>
                       <td>
                         <div className="d-flex align-items-center">
                           <FaCalendarAlt className="me-2 text-muted" />
-                          {formatDate(alert.start_date)}
+                          {formatDate(event.start_date || event.startDate)}
                         </div>
                       </td>
                       <td>
@@ -232,29 +321,46 @@ const AlertsPage = () => {
                       <td>
                         <div className="d-flex align-items-center">
                           <FaUser className="me-2 text-muted" />
-                          <small>{alert.responsible_email}</small>
+                          <small>{event.responsible_email}</small>
                         </div>
+                      </td>
+                      <td>
+                        <Badge bg={isLocal ? 'secondary' : 'dark'}>
+                          {isLocal ? '🖥️ Local' : '☁️ Backend'}
+                        </Badge>
                       </td>
                       <td>
                         <Badge bg={status.variant}>
                           {status.label}
                         </Badge>
-                        {alert.alert_scheduled && (
+                        {event.alert_scheduled && (
                           <small className="d-block text-muted">
                             <FaCheck className="me-1" /> Alerta programada
                           </small>
                         )}
                       </td>
                       <td>
-                        <Button
-                          size="sm"
-                          variant="outline-primary"
-                          onClick={() => handleSendManualAlert(alert.id)}
-                          disabled={loading}
-                        >
-                          <FaPaperPlane className="me-1" />
-                          Enviar Ahora
-                        </Button>
+                        <div className="d-flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline-primary"
+                            onClick={() => handleSendManualAlert(event.id)}
+                            disabled={loading}
+                            title="Enviar alerta ahora"
+                          >
+                            <FaPaperPlane />
+                          </Button>
+                          {isLocal && (
+                            <Button
+                              size="sm"
+                              variant="outline-danger"
+                              onClick={() => handleDeleteEvent(event.id)}
+                              title="Eliminar evento"
+                            >
+                              <FaTrash />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -268,7 +374,13 @@ const AlertsPage = () => {
       {/* Info */}
       <Alert variant="info" className="mt-4">
         <FaExclamationTriangle className="me-2" />
-        <strong>Nota:</strong> Las alertas se envían automáticamente al email del responsable y administradores cuando se crea un nuevo evento en el calendario.
+        <strong>¿Cómo funciona?</strong>
+        <ul className="mb-0 mt-2">
+          <li>Eventos creados en Calendario → Aparecen automáticamente aquí</li>
+          <li>Eventos locales (🖥️) → Se guardan en tu navegador</li>
+          <li>Eventos del backend (☁️) → Vienen del servidor</li>
+          <li>Los eventos no se pierden al recargar la página</li>
+        </ul>
       </Alert>
 
       {/* Modal para prueba */}

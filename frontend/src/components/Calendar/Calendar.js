@@ -10,6 +10,7 @@ import {
   FaCalendarDay, FaTag, FaBook
 } from 'react-icons/fa';
 import '../../styles/calendar.css';
+import { eventService } from '../../services/eventService';
 
 const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -242,24 +243,14 @@ const Calendar = () => {
         end_date: formData.endDate,
         location: formData.location,
         responsible_email: formData.responsible_email,
-        max_participants: parseInt(formData.max_participants) || 0
-      };
-
-      const newLocalEvent = {
-        id: Date.now(),
-        title: formData.title,
-        description: formData.description,
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        type: formData.type,
-        location: formData.location,
-        participants: parseInt(formData.max_participants) || 0,
+        max_participants: parseInt(formData.max_participants) || 0,
         color: formData.type === 'journey_to_cloud' ? '#3498db' :
           formData.type === 'chapter_technical' ? '#2ecc71' : '#9b59b6',
         status: status,
-        duration: duration,
-        responsible_email: formData.responsible_email
+        duration: duration
       };
+
+      const newLocalEvent = eventService.createEvent(eventData);
 
       try {
         const token = localStorage.getItem('auth_token');
@@ -269,24 +260,29 @@ const Calendar = () => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify(eventData)
+          body: JSON.stringify({
+            title: formData.title,
+            description: formData.description,
+            type: formData.type,
+            start_date: formData.startDate,
+            end_date: formData.endDate,
+            location: formData.location,
+            responsible_email: formData.responsible_email,
+            max_participants: parseInt(formData.max_participants) || 0
+          })
         });
 
         if (response.ok) {
           const result = await response.json();
-          console.log('✅ Evento guardado en backend:', result);
-          newLocalEvent.id = result.event?.id || result.id || Date.now();
+          console.log('✅ Evento también guardado en backend:', result);
         } else {
-          const error = await response.json();
-          console.warn('⚠️ Error guardando en backend, usando local:', error);
+          console.warn('⚠️ Evento solo guardado localmente');
         }
       } catch (backendError) {
-        console.warn('⚠️ Backend no disponible, guardando solo local:', backendError.message);
+        console.log('ℹ️ Evento guardado solo en memoria:', backendError.message);
       }
       const updatedEvents = [...events, newLocalEvent];
       setEvents(updatedEvents);
-      localStorage.setItem('technical_onboardings', JSON.stringify(updatedEvents));
-
       setFormData({
         title: '',
         description: '',
@@ -300,8 +296,7 @@ const Calendar = () => {
       });
 
       setShowModal(false);
-
-      alert('✅ Evento creado exitosamente\n📧 Alertas enviadas a tu email');
+      alert(`✅ Evento "${formData.title}" creado exitosamente!\n\n📅 Fecha: ${formData.startDate}\n👤 Responsable: ${formData.responsible_email}\n📧 Alertas: Se mostrarán en la página de Alertas`);
 
     } catch (error) {
       console.error('Error al crear evento:', error);
