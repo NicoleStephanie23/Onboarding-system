@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const registerController = require('../controllers/registerController'); // Añadir esta línea
-
+const registerController = require('../controllers/registerController');
 
 router.post('/login', authController.login);
 router.post('/register', registerController.register);

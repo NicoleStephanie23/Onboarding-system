@@ -16,6 +16,7 @@ const CollaboratorsPage = () => {
 
   const [collaborators, setCollaborators] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingCollaborator, setEditingCollaborator] = useState(null);
@@ -49,9 +50,12 @@ const CollaboratorsPage = () => {
       if (searchTerm.trim()) params.search = searchTerm.trim();
       if (statusFilter !== 'all') params.status = statusFilter;
 
+      console.log('🔍 Cargando colaboradores con filtros:', params);
       const data = await collaboratorService.getAll(params);
+      console.log(`✅ ${data.length} colaboradores cargados`);
       setCollaborators(data);
     } catch (err) {
+      console.error('❌ Error al cargar colaboradores:', err);
       setError(err.message || 'Error al cargar colaboradores');
       setCollaborators([]);
     } finally {
@@ -101,47 +105,96 @@ const CollaboratorsPage = () => {
 
   const handleSaveCollaborator = async (formData) => {
     try {
+      setSaving(true);
+      console.log('📝 Guardando colaborador...', formData);
+
+      let savedCollaborator;
+
       if (editingCollaborator) {
+        console.log('✏️ Actualizando colaborador existente:', editingCollaborator.id);
         await collaboratorService.update(editingCollaborator.id, formData);
-        setToast({ show: true, message: '✅ Actualizado', variant: 'success' });
+        setToast({ show: true, message: '✅ Colaborador actualizado exitosamente', variant: 'success' });
       } else {
-        await collaboratorService.create(formData);
-        setToast({ show: true, message: '✅ Creado', variant: 'success' });
+        console.log('➕ Creando nuevo colaborador');
+        savedCollaborator = await collaboratorService.create(formData);
+        console.log('✅ Colaborador creado:', savedCollaborator);
+        setToast({ show: true, message: '✅ Colaborador creado exitosamente', variant: 'success' });
       }
+
       setShowModal(false);
       setEditingCollaborator(null);
-      loadCollaborators();
+      setTimeout(() => {
+        loadCollaborators();
+      }, 500);
+
     } catch (err) {
-      setToast({ show: true, message: '❌ Error', variant: 'danger' });
+      console.error('❌ Error al guardar colaborador:', err);
+
+      let errorMessage = '❌ Error al guardar el colaborador';
+
+      if (err.error) {
+        if (err.error.includes('email') || err.error.includes('Email')) {
+          errorMessage = '❌ El email ya está registrado';
+        } else if (err.error.includes('requeridos')) {
+          errorMessage = `❌ ${err.error}`;
+        } else {
+          errorMessage = `❌ ${err.error}`;
+        }
+      } else if (err.message) {
+        errorMessage = `❌ ${err.message}`;
+      }
+
+      setToast({
+        show: true,
+        message: errorMessage,
+        variant: 'danger'
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('¿Eliminar este colaborador?')) {
+    if (window.confirm('¿Estás seguro de eliminar este colaborador?')) {
       try {
         await collaboratorService.delete(id);
-        setToast({ show: true, message: '✅ Eliminado', variant: 'success' });
-        loadCollaborators();
+        setToast({ show: true, message: '✅ Colaborador eliminado', variant: 'success' });
+        setTimeout(() => {
+          loadCollaborators();
+        }, 500);
+
       } catch (err) {
-        setToast({ show: true, message: '❌ Error', variant: 'danger' });
+        console.error('❌ Error eliminando colaborador:', err);
+        setToast({
+          show: true,
+          message: err.error || '❌ Error al eliminar colaborador',
+          variant: 'danger'
+        });
       }
     }
   };
 
   const handleCompleteOnboarding = async (id, type) => {
-    if (window.confirm(`¿Marcar onboarding ${type} como completado?`)) {
+    const typeName = type === 'welcome' ? 'bienvenida' : 'técnico';
+
+    if (window.confirm(`¿Marcar onboarding de ${typeName} como completado?`)) {
       try {
         await collaboratorService.completeOnboarding(id, type);
         setToast({
           show: true,
-          message: `✅ Onboarding ${type} completado`,
+          message: `✅ Onboarding de ${typeName} completado`,
           variant: 'success'
         });
-        loadCollaborators();
+
+        setTimeout(() => {
+          loadCollaborators();
+        }, 500);
+
       } catch (err) {
+        console.error(`❌ Error completando onboarding ${type}:`, err);
         setToast({
           show: true,
-          message: `❌ Error al completar onboarding ${type}`,
+          message: err.error || `❌ Error al completar onboarding de ${typeName}`,
           variant: 'danger'
         });
       }
@@ -151,9 +204,18 @@ const CollaboratorsPage = () => {
   return (
     <Container fluid>
       {/* Toast */}
-      <ToastContainer position="top-end">
-        <Toast show={toast.show} onClose={() => setToast({ ...toast, show: false })} delay={3000} autohide>
-          <Toast.Body className={`text-white bg-${toast.variant}`}>
+      <ToastContainer position="top-end" className="p-3">
+        <Toast
+          show={toast.show}
+          onClose={() => setToast({ ...toast, show: false })}
+          delay={5000}
+          autohide
+          bg={toast.variant}
+        >
+          <Toast.Header closeButton>
+            <strong className="me-auto">Sistema de Onboarding</strong>
+          </Toast.Header>
+          <Toast.Body className="text-white">
             {toast.message}
           </Toast.Body>
         </Toast>
@@ -161,13 +223,18 @@ const CollaboratorsPage = () => {
 
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>Colaboradores</h2>
+        <div>
+          <h2>Colaboradores</h2>
+          <p className="text-muted mb-0">
+            Total: {collaborators.length} colaborador{collaborators.length !== 1 ? 'es' : ''}
+          </p>
+        </div>
         <Button variant="primary" onClick={() => setShowModal(true)}>
-          <FaPlus className="me-2" /> Nuevo
+          <FaPlus className="me-2" /> Nuevo Colaborador
         </Button>
       </div>
 
-      {/* Filtros SIMPLIFICADOS */}
+      {/* Filtros */}
       <Row className="mb-4">
         <Col md={6}>
           <InputGroup>
@@ -200,7 +267,7 @@ const CollaboratorsPage = () => {
         </Col>
       </Row>
 
-      {/* Error */}
+      {/* Mensaje de error */}
       {error && (
         <Alert variant="danger" className="mb-3">
           <FaExclamationTriangle className="me-2" />
@@ -212,13 +279,25 @@ const CollaboratorsPage = () => {
       {loading ? (
         <div className="text-center py-5">
           <Spinner animation="border" variant="primary" />
-          <p className="mt-2">Cargando...</p>
+          <p className="mt-2">Cargando colaboradores...</p>
         </div>
       ) : collaborators.length === 0 ? (
         <Alert variant="info" className="text-center py-4">
-          No hay colaboradores
-          {searchTerm && ` para "${searchTerm}"`}
-          {statusFilter !== 'all' && ` con estado "${statusFilter}"`}
+          <h5>No hay colaboradores</h5>
+          <p className="mb-0">
+            {searchTerm && `No se encontraron resultados para "${searchTerm}"`}
+            {statusFilter !== 'all' && ` con estado "${statusFilter}"`}
+            {!searchTerm && statusFilter === 'all' && 'Comienza agregando un nuevo colaborador'}
+          </p>
+          {!searchTerm && statusFilter === 'all' && (
+            <Button
+              variant="primary"
+              className="mt-3"
+              onClick={() => setShowModal(true)}
+            >
+              <FaPlus className="me-2" /> Agregar Primer Colaborador
+            </Button>
+          )}
         </Alert>
       ) : (
         <CollaboratorTable
@@ -232,13 +311,15 @@ const CollaboratorsPage = () => {
         />
       )}
 
-      {/* Modal */}
+      {/* Modal para crear/editar colaborador - SIN FOOTER DUPLICADO */}
       <Modal show={showModal} onHide={() => {
         setShowModal(false);
         setEditingCollaborator(null);
       }} size="lg">
         <Modal.Header closeButton>
-          <Modal.Title>{editingCollaborator ? 'Editar' : 'Nuevo'} Colaborador</Modal.Title>
+          <Modal.Title>
+            {editingCollaborator ? 'Editar Colaborador' : 'Nuevo Colaborador'}
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <CollaboratorForm
@@ -248,6 +329,7 @@ const CollaboratorsPage = () => {
               setShowModal(false);
               setEditingCollaborator(null);
             }}
+            saving={saving}
           />
         </Modal.Body>
       </Modal>
