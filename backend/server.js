@@ -10,7 +10,6 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Configuración CORS
 app.use(cors({
   origin: 'http://localhost:3000',
   credentials: true,
@@ -21,7 +20,6 @@ app.use(express.json());
 app.use(helmet());
 app.use(morgan('dev'));
 
-// Middleware de logging
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   if (Object.keys(req.query).length > 0) {
@@ -49,7 +47,6 @@ console.log('🔧 Configuración MySQL:', {
   database: dbConfig.database
 });
 
-// ==================== MIDDLEWARE DE AUTENTICACIÓN ====================
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -84,9 +81,6 @@ const isManagerOrAdmin = (req, res, next) => {
   }
 };
 
-// ==================== RUTAS DE AUTENTICACIÓN ====================
-
-// RUTA DE REGISTRO (CREAR CUENTA)
 app.post('/api/auth/register', async (req, res) => {
   console.log('📝 POST /api/auth/register');
   console.log('📦 Data recibida:', { ...req.body, password: '***' });
@@ -94,7 +88,6 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { full_name, email, username, password } = req.body;
 
-    // Validaciones
     if (!full_name || !email || !username || !password) {
       return res.status(400).json({
         success: false,
@@ -109,7 +102,6 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    // Verificar si el usuario ya existe
     const connection = await mysql.createConnection(dbConfig);
 
     const [existingUsers] = await connection.execute(
@@ -125,23 +117,16 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    // Encriptar contraseña
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
-
-    // Determinar rol (primer usuario = admin, otros = viewer)
     const [users] = await connection.execute('SELECT COUNT(*) as count FROM users');
     const role = users[0].count === 0 ? 'admin' : 'viewer';
-
-    // Crear nuevo usuario
     const [result] = await connection.execute(
       'INSERT INTO users (full_name, email, username, password_hash, role) VALUES (?, ?, ?, ?, ?)',
       [full_name, email, username, password_hash, role]
     );
 
     await connection.end();
-
-    // Generar token JWT para el nuevo usuario
     const token = jwt.sign(
       {
         id: result.insertId,
@@ -178,7 +163,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// LOGIN
 app.post('/api/auth/login', async (req, res) => {
   console.log('🔐 POST /api/auth/login');
   console.log('📦 Data recibida:', { ...req.body, password: '***' });
@@ -203,7 +187,6 @@ app.post('/api/auth/login', async (req, res) => {
     await connection.end();
 
     if (users.length === 0) {
-      // Verificar si es el admin por defecto (para desarrollo)
       if (username === 'admin' && password === 'Admin123!') {
         console.log('✅ Login de admin por defecto (desarrollo)');
 
@@ -262,7 +245,6 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: JWT_EXPIRES_IN }
     );
 
-    // Actualizar último login
     const updateConnection = await mysql.createConnection(dbConfig);
     await updateConnection.execute(
       'UPDATE users SET last_login = NOW() WHERE id = ?',
@@ -294,7 +276,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// VERIFICAR TOKEN
 app.post('/api/auth/verify', async (req, res) => {
   const token = req.headers['authorization']?.split(' ')[1];
 
@@ -307,8 +288,6 @@ app.post('/api/auth/verify', async (req, res) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Para el token del admin temporal (desarrollo)
     if (decoded.id === 1 && decoded.username === 'admin') {
       return res.json({
         valid: true,
@@ -349,7 +328,6 @@ app.post('/api/auth/verify', async (req, res) => {
   }
 });
 
-// LOGOUT
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
   res.json({
     success: true,
@@ -357,7 +335,6 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
   });
 });
 
-// CAMBIAR CONTRASEÑA
 app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const userId = req.user.id;
@@ -421,9 +398,6 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
   }
 });
 
-// ==================== RUTAS DE COLABORADORES ====================
-
-// OBTENER TODOS LOS COLABORADORES (CON FILTROS)
 app.get('/api/collaborators', authenticateToken, async (req, res) => {
   console.log('📋 GET /api/collaborators');
   console.log('🔍 Query params:', req.query);
@@ -463,7 +437,6 @@ app.get('/api/collaborators', authenticateToken, async (req, res) => {
   }
 });
 
-// OBTENER COLABORADOR POR ID
 app.get('/api/collaborators/:id', authenticateToken, async (req, res) => {
   console.log(`🔍 GET /api/collaborators/${req.params.id}`);
 
@@ -492,10 +465,7 @@ app.get('/api/collaborators/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// CREAR NUEVO COLABORADOR
 app.post('/api/collaborators', authenticateToken, isManagerOrAdmin, async (req, res) => {
-  console.log('➕ POST /api/collaborators');
-  console.log('📦 Data recibida:', req.body);
 
   try {
     const { full_name, email, hire_date } = req.body;
@@ -531,8 +501,6 @@ app.post('/api/collaborators', authenticateToken, isManagerOrAdmin, async (req, 
         error: 'El email ya está registrado'
       });
     }
-
-    console.error('❌ Error:', error.message);
     res.status(500).json({
       success: false,
       error: 'Error al crear colaborador'
@@ -540,10 +508,9 @@ app.post('/api/collaborators', authenticateToken, isManagerOrAdmin, async (req, 
   }
 });
 
-// ACTUALIZAR COLABORADOR
 app.put('/api/collaborators/:id', authenticateToken, isManagerOrAdmin, async (req, res) => {
-  console.log(`✏️  PUT /api/collaborators/${req.params.id}`);
-  console.log('📦 Data recibida:', req.body);
+  console.log(`PUT /api/collaborators/${req.params.id}`);
+  console.log('Data recibida:', req.body);
 
   try {
     const {
@@ -626,7 +593,6 @@ app.put('/api/collaborators/:id', authenticateToken, isManagerOrAdmin, async (re
   }
 });
 
-// COMPLETAR ONBOARDING
 app.post('/api/collaborators/:id/complete-onboarding', authenticateToken, isManagerOrAdmin, async (req, res) => {
   console.log(`✅ POST /api/collaborators/${req.params.id}/complete-onboarding`);
 
@@ -677,7 +643,6 @@ app.post('/api/collaborators/:id/complete-onboarding', authenticateToken, isMana
   }
 });
 
-// ELIMINAR COLABORADOR
 app.delete('/api/collaborators/:id', authenticateToken, isAdmin, async (req, res) => {
   console.log(`🗑️  DELETE /api/collaborators/${req.params.id}`);
 
@@ -711,7 +676,6 @@ app.delete('/api/collaborators/:id', authenticateToken, isAdmin, async (req, res
   }
 });
 
-// ==================== RUTAS DE CALENDARIO ====================
 app.get('/api/calendar', authenticateToken, async (req, res) => {
   console.log('📅 GET /api/calendar');
 
@@ -775,7 +739,6 @@ app.post('/api/calendar', authenticateToken, isManagerOrAdmin, async (req, res) 
   }
 });
 
-// ==================== RUTAS DE ALERTAS ====================
 app.get('/api/alerts/upcoming', authenticateToken, async (req, res) => {
   console.log('🔔 GET /api/alerts/upcoming');
 
@@ -800,7 +763,6 @@ app.get('/api/alerts/upcoming', authenticateToken, async (req, res) => {
   }
 });
 
-// ==================== RUTAS PÚBLICAS ====================
 app.get('/api/health', async (req, res) => {
   try {
     const connection = await mysql.createConnection(dbConfig);
@@ -824,7 +786,6 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// RUTA DE DIAGNÓSTICO
 app.get('/api/debug/users', async (req, res) => {
   try {
     const connection = await mysql.createConnection(dbConfig);
@@ -840,7 +801,6 @@ app.get('/api/debug/users', async (req, res) => {
   }
 });
 
-// RUTA PRINCIPAL
 app.get('/', (req, res) => {
   res.json({
     name: 'Onboarding System API',
@@ -861,7 +821,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// ERROR 404
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -871,29 +830,13 @@ app.use((req, res) => {
   });
 });
 
-// MANEJO DE ERRORES GLOBAL
 app.use((err, req, res, next) => {
-  console.error('🔥 ERROR GLOBAL:', err);
   res.status(500).json({
     success: false,
     error: 'Error interno del servidor',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
-
-// ==================== INICIAR SERVIDOR ====================
 app.listen(PORT, () => {
-  console.log(`
-  🚀 ==============================================
-  🚀 Backend Onboarding System INICIADO
-  🚀 ==============================================
-  📍 URL Principal: http://localhost:${PORT}
-  🔐 Login: http://localhost:${PORT}/api/auth/login
-  📝 Registro: http://localhost:${PORT}/api/auth/register
-  📊 Health Check: http://localhost:${PORT}/api/health
-  👥 Colaboradores: http://localhost:${PORT}/api/collaborators
-  📅 Calendario: http://localhost:${PORT}/api/calendar
-  🗄️  MySQL: ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}
-  ==============================================
-  `);
+
 });

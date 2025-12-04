@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container, Card, Table, Badge,
   Alert, Row, Col, Spinner
@@ -22,44 +22,56 @@ const AlertsPage = () => {
     next7Days: 0
   });
 
-  useEffect(() => {
-    loadLocalEvents();
-    const unsubscribe = eventService.subscribe((events) => {
-      setLocalEvents(events);
-      updateStats(events);
-    });
+  const getLocalEventsOnly = useCallback((localEventsList, backendAlerts) => {
+    const localOnly = localEventsList.filter(event => event.id > 1000000000000);
 
-    loadBackendAlerts();
-
-    return () => unsubscribe();
+    return localOnly;
   }, []);
 
-  const loadLocalEvents = () => {
+  const loadLocalEvents = useCallback(() => {
     try {
       const events = eventService.getAllEvents();
+      console.log('📅 Eventos locales cargados:', events.length);
       setLocalEvents(events);
       updateStats(events);
     } catch (error) {
-      console.error('Error cargando eventos locales:', error);
+      console.error('❌ Error cargando eventos locales:', error);
     }
-  };
+  }, []);
 
-  const loadBackendAlerts = async () => {
+  const loadBackendAlerts = useCallback(async () => {
     try {
       setLoading(true);
       const data = await alertService.getUpcoming();
       setAlerts(data);
     } catch (error) {
-      console.log('No se pudieron cargar alertas del backend');
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const updateStats = (events) => {
+  const updateStats = useCallback((events) => {
     const stats = eventService.getStats();
     setStats(stats);
-  };
+  }, []);
+
+  const loadAllData = useCallback(async () => {
+    console.log('🔄 Cargando todos los datos...');
+    await loadBackendAlerts();
+    loadLocalEvents();
+  }, [loadBackendAlerts, loadLocalEvents]);
+
+  useEffect(() => {
+    loadAllData();
+    const unsubscribe = eventService.subscribe((events) => {
+      console.log('🔄 Eventos locales actualizados:', events.length);
+      setLocalEvents(events);
+      updateStats(events);
+    });
+
+    return () => unsubscribe();
+  }, [loadAllData, updateStats]);
 
   const getDaysUntil = (dateString) => {
     const today = new Date();
@@ -78,15 +90,6 @@ const AlertsPage = () => {
     return { label: 'Programado', variant: 'success' };
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
   const handleDeleteEvent = (id) => {
     if (window.confirm('¿Eliminar este evento?')) {
       const deleted = eventService.deleteEvent(id);
@@ -96,18 +99,21 @@ const AlertsPage = () => {
           'El evento ha sido eliminado correctamente',
           'success'
         );
+        setTimeout(() => {
+          loadLocalEvents();
+        }, 300);
       }
     }
   };
 
   const handleRefresh = () => {
-    loadLocalEvents();
-    loadBackendAlerts();
+    console.log('🔄 Refrescando datos manualmente...');
     notificationService.showNotification(
-      '🔄 Datos Actualizados',
-      'La lista de eventos ha sido actualizada',
+      '🔄 Actualizando',
+      'Recargando eventos...',
       'info'
     );
+    loadAllData();
   };
 
   const handleClearAll = () => {
@@ -118,13 +124,18 @@ const AlertsPage = () => {
         'Todos los eventos locales han sido eliminados',
         'warning'
       );
+      setTimeout(() => {
+        loadLocalEvents();
+      }, 300);
     }
   };
 
-  const allEvents = [...localEvents, ...alerts];
-  const uniqueEvents = allEvents.filter((event, index, self) =>
-    index === self.findIndex((e) => e.id === event.id)
-  );
+  const localOnlyEvents = getLocalEventsOnly(localEvents, alerts);
+  const upcomingCount = localOnlyEvents.filter(e => getDaysUntil(e.start_date || e.startDate) > 0).length;
+  const next3DaysCount = localOnlyEvents.filter(e => {
+    const daysUntil = getDaysUntil(e.start_date || e.startDate);
+    return daysUntil > 0 && daysUntil <= 3;
+  }).length;
 
   return (
     <Container fluid>
@@ -133,23 +144,27 @@ const AlertsPage = () => {
         Sistema de Alertas
       </h2>
 
-      {/* Estadísticas - MODIFICADO: Solo 2 tarjetas */}
+      {/* Estadísticas */}
       <Row className="mb-4">
         <Col md={6}>
           <Card className="text-center">
             <Card.Body>
-              <h3 className="text-success">{uniqueEvents.length}</h3>
-              <Card.Text>Total General</Card.Text>
+              <h3 className="text-success">{localOnlyEvents.length}</h3>
+              <Card.Text>Eventos Programados</Card.Text>
+              <small className="text-muted">
+                Total de eventos locales
+              </small>
             </Card.Body>
           </Card>
         </Col>
         <Col md={6}>
           <Card className="text-center">
             <Card.Body>
-              <h3 className="text-info">
-                {uniqueEvents.filter(e => getDaysUntil(e.start_date || e.startDate) <= 3).length}
-              </h3>
+              <h3 className="text-info">{next3DaysCount}</h3>
               <Card.Text>Próximos 3 días</Card.Text>
+              <small className="text-muted">
+                {upcomingCount} eventos pendientes
+              </small>
             </Card.Body>
           </Card>
         </Col>
@@ -159,37 +174,34 @@ const AlertsPage = () => {
       <Card className="dashboard-card">
         <Card.Header className="bg-white">
           <div className="d-flex justify-content-between align-items-center">
-            <h5 className="mb-0">Eventos y Alertas Programadas</h5>
+            <h5 className="mb-0">Eventos Programados</h5>
             <div className="d-flex align-items-center gap-2">
               <Badge bg="primary" className="px-3 py-2">
-                {uniqueEvents.length} evento{uniqueEvents.length !== 1 ? 's' : ''}
+                {localOnlyEvents.length} evento{localOnlyEvents.length !== 1 ? 's' : ''}
               </Badge>
-              {uniqueEvents.length > 0 && (
-                <>
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    onClick={handleRefresh}
-                    title="Actualizar lista"
-                  >
-                    <FaSync />
-                  </button>
-                  {localEvents.length > 0 && (
-                    <button
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={handleClearAll}
-                      title="Eliminar todos los eventos locales"
-                    >
-                      <FaTrash />
-                    </button>
-                  )}
-                  <button
-                    className="btn btn-sm btn-outline-primary"
-                    onClick={() => window.location.href = '/calendar'}
-                  >
-                    <FaArrowRight className="me-1" />
-                    Crear nuevo evento
-                  </button>
-                </>
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                onClick={handleRefresh}
+                title="Actualizar lista"
+                disabled={loading}
+              >
+                <FaSync className={loading ? 'fa-spin' : ''} />
+              </button>
+              <button
+                className="btn btn-sm btn-outline-primary"
+                onClick={() => window.location.href = '/calendar'}
+              >
+                <FaArrowRight className="me-1" />
+                Crear nuevo evento
+              </button>
+              {localOnlyEvents.length > 0 && (
+                <button
+                  className="btn btn-sm btn-outline-danger"
+                  onClick={handleClearAll}
+                  title="Eliminar todos los eventos"
+                >
+                  <FaTrash />
+                </button>
               )}
             </div>
           </div>
@@ -198,9 +210,9 @@ const AlertsPage = () => {
           {loading ? (
             <div className="text-center py-5">
               <Spinner animation="border" variant="primary" />
-              <p className="mt-2">Cargando alertas...</p>
+              <p className="mt-2">Cargando eventos...</p>
             </div>
-          ) : uniqueEvents.length === 0 ? (
+          ) : localOnlyEvents.length === 0 ? (
             <div className="text-center py-4">
               <div className="mb-3">
                 <FaBell size={64} className="text-muted" />
@@ -232,10 +244,9 @@ const AlertsPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {uniqueEvents.map((event) => {
+                  {localOnlyEvents.map((event) => {
                     const daysUntil = getDaysUntil(event.start_date || event.startDate);
                     const status = getAlertStatus(event);
-                    const isLocal = event.id > 1000000000000;
 
                     return (
                       <tr key={event.id}>
@@ -293,15 +304,13 @@ const AlertsPage = () => {
                         </td>
                         <td className="text-end">
                           <div className="d-flex justify-content-end gap-1">
-                            {isLocal && (
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                onClick={() => handleDeleteEvent(event.id)}
-                                title="Eliminar evento"
-                              >
-                                <FaTrash />
-                              </button>
-                            )}
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => handleDeleteEvent(event.id)}
+                              title="Eliminar evento"
+                            >
+                              <FaTrash />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -315,7 +324,7 @@ const AlertsPage = () => {
       </Card>
 
       {/* Info simplificada */}
-      {uniqueEvents.length === 0 && (
+      {localOnlyEvents.length === 0 && !loading && (
         <Alert variant="light" className="mt-4 border">
           <div className="text-center">
             <FaCalendarDay className="text-primary mb-2" size={24} />

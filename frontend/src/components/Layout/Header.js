@@ -80,21 +80,21 @@ const Header = () => {
       keywords: ['completado', 'terminado', 'finalizado', 'listo', 'onboardings completados', 'completos'],
       icon: <FaUsers className="text-success" />,
       label: 'Onboardings Completados',
-      action: () => navigate('/collaborators?status=completed'),
+      action: () => navigate('/collaborators?statusFilter=completed'),
       type: 'filter'
     },
     {
       keywords: ['pendiente', 'espera', 'por hacer', 'onboardings pendientes', 'pendientes'],
       icon: <FaUsers className="text-warning" />,
       label: 'Onboardings Pendientes',
-      action: () => navigate('/collaborators?status=pending'),
+      action: () => navigate('/collaborators?statusFilter=pending'),
       type: 'filter'
     },
     {
       keywords: ['progreso', 'en curso', 'en progreso', 'en proceso'],
       icon: <FaUsers className="text-info" />,
       label: 'Onboardings en Progreso',
-      action: () => navigate('/collaborators?status=in_progress'),
+      action: () => navigate('/collaborators?statusFilter=in_progress'),
       type: 'filter'
     }
   ];
