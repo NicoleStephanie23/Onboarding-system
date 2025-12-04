@@ -1,6 +1,22 @@
 CREATE DATABASE IF NOT EXISTS onboarding_db;
 USE onboarding_db;
 
+CREATE TABLE IF NOT EXISTS users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    role ENUM('admin', 'manager', 'viewer') DEFAULT 'viewer',
+    is_active BOOLEAN DEFAULT TRUE,
+    last_login TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+INSERT INTO users (username, email, password_hash, full_name, role) VALUES
+('admin', 'admin@onboarding.com', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Administrador Principal', 'admin');
+
 CREATE TABLE collaborators (
     id INT PRIMARY KEY AUTO_INCREMENT,
     full_name VARCHAR(100) NOT NULL,
@@ -27,6 +43,18 @@ CREATE TABLE technical_onboarding_calendar (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS alert_logs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    type VARCHAR(50) NOT NULL,
+    event_id INT NULL,
+    details TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    scheduled_for TIMESTAMP NULL,
+    sent_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES technical_onboarding_calendar(id) ON DELETE SET NULL
+);
+
 INSERT INTO collaborators (full_name, email, hire_date, welcome_onboarding_status, technical_onboarding_status) VALUES
 ('Ana García', 'ana.garcia@empresa.com', '2024-01-10', 'completed', 'pending'),
 ('Carlos Rodríguez', 'carlos.rodriguez@empresa.com', '2024-02-15', 'completed', 'completed'),
@@ -39,6 +67,9 @@ INSERT INTO technical_onboarding_calendar (title, description, type, start_date,
 ('Onboarding Frontend Chapter', 'Capacitación para desarrolladores frontend', 'chapter_technical', '2024-03-25', '2024-03-29', 'frontend.lead@empresa.com'),
 ('Onboarding Backend Chapter', 'Capacitación para desarrolladores backend', 'chapter_technical', '2024-04-05', '2024-04-10', 'backend.lead@empresa.com'),
 ('Journey to Cloud - Abril 2024', 'Curso introductorio a tecnologías cloud', 'journey_to_cloud', '2024-04-20', '2024-04-27', 'cloud.trainer@empresa.com');
+
+SELECT '✅ Tabla de usuarios:' as message;
+SELECT id, username, email, full_name, role, is_active FROM users;
 
 SELECT '✅ Tabla de colaboradores:' as message;
 SELECT * FROM collaborators;

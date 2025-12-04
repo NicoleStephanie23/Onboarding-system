@@ -6,16 +6,19 @@ import {
 import {
   FaSearch, FaUserCircle, FaUsers, FaCalendarAlt,
   FaBell, FaTachometerAlt, FaCog, FaArrowRight, FaUserPlus,
-  FaGraduationCap, FaHandshake
+  FaGraduationCap, FaHandshake, FaSignOutAlt
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Header = () => {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef(null);
+
   const searchOptions = [
     {
       keywords: ['colaborador', 'empleado', 'trabajador', 'persona', 'usuario', 'colaboradores'],
@@ -77,21 +80,21 @@ const Header = () => {
       keywords: ['completado', 'terminado', 'finalizado', 'listo', 'onboardings completados', 'completos'],
       icon: <FaUsers className="text-success" />,
       label: 'Onboardings Completados',
-      action: () => navigate('/collaborators?statusFilter=completed'),
+      action: () => navigate('/collaborators?status=completed'),
       type: 'filter'
     },
     {
       keywords: ['pendiente', 'espera', 'por hacer', 'onboardings pendientes', 'pendientes'],
       icon: <FaUsers className="text-warning" />,
       label: 'Onboardings Pendientes',
-      action: () => navigate('/collaborators?statusFilter=pending'),
+      action: () => navigate('/collaborators?status=pending'),
       type: 'filter'
     },
     {
       keywords: ['progreso', 'en curso', 'en progreso', 'en proceso'],
       icon: <FaUsers className="text-info" />,
       label: 'Onboardings en Progreso',
-      action: () => navigate('/collaborators?statusFilter=in_progress'),
+      action: () => navigate('/collaborators?status=in_progress'),
       type: 'filter'
     }
   ];
@@ -173,6 +176,7 @@ const Header = () => {
         bestMatch = option;
       }
     });
+
     if (bestMatch && highestScore >= 10) {
       bestMatch.action();
       setSearchTerm('');
@@ -183,6 +187,7 @@ const Header = () => {
       setShowSuggestions(false);
     }
   };
+
   const handleSuggestionClick = (suggestion) => {
     suggestion.action();
     setSearchTerm('');
@@ -193,6 +198,11 @@ const Header = () => {
     if (e.key === 'Enter') {
       handleSearch(e);
     }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
   };
 
   return (
@@ -233,7 +243,7 @@ const Header = () => {
                 style={{ width: '45px' }}
                 aria-label="Buscar"
               >
-                <span className="visually-hidden">Buscar</span>
+                <FaSearch size={14} />
               </Button>
             </div>
           </Form>
@@ -340,12 +350,23 @@ const Header = () => {
           <Dropdown align="end">
             <Dropdown.Toggle variant="light" className="d-flex align-items-center">
               <FaUserCircle size={24} />
-              <span className="ms-2 d-none d-md-inline">Administrador</span>
+              <span className="ms-2 d-none d-md-inline">
+                {user?.full_name || 'Usuario'}
+              </span>
             </Dropdown.Toggle>
             <Dropdown.Menu>
               <Dropdown.Header>
-                <div className="fw-bold">Usuario Administrador</div>
-                <small className="text-muted">admin@onboarding.com</small>
+                <div className="fw-bold">{user?.full_name || 'Usuario'}</div>
+                <small className="text-muted">{user?.email || 'usuario@onboarding.com'}</small>
+                <div className="mt-1">
+                  <Badge bg={
+                    user?.role === 'admin' ? 'danger' :
+                      user?.role === 'manager' ? 'warning' : 'info'
+                  }>
+                    {user?.role === 'admin' ? 'Administrador' :
+                      user?.role === 'manager' ? 'Manager' : 'Visualizador'}
+                  </Badge>
+                </div>
               </Dropdown.Header>
               <Dropdown.Divider />
               <Dropdown.Item onClick={() => navigate('/settings')}>
@@ -353,7 +374,8 @@ const Header = () => {
                 Configuración
               </Dropdown.Item>
               <Dropdown.Divider />
-              <Dropdown.Item className="text-danger">
+              <Dropdown.Item className="text-danger" onClick={handleLogout}>
+                <FaSignOutAlt className="me-2" />
                 Cerrar Sesión
               </Dropdown.Item>
             </Dropdown.Menu>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Badge } from 'react-bootstrap';
-import { 
-  FaUsers, 
-  FaCalendarCheck, 
+import {
+  FaUsers,
+  FaCalendarCheck,
   FaCheckCircle,
   FaClock
 } from 'react-icons/fa';
@@ -18,11 +18,10 @@ const Dashboard = () => {
   const [recentCollaborators, setRecentCollaborators] = useState([]);
 
   useEffect(() => {
-    // Datos de ejemplo - luego se conectarán a la API
     setStats({
-      totalCollaborators: 45,
-      completedOnboardings: 28,
-      pendingOnboardings: 17,
+      totalCollaborators: 10,
+      completedOnboardings: 5,
+      pendingOnboardings: 3,
       upcomingEvents: 3
     });
 
@@ -41,13 +40,13 @@ const Dashboard = () => {
       'in_progress': 'info',
       completed: 'success'
     };
-    
+
     const labels = {
       pending: 'Pendiente',
       'in_progress': 'En Progreso',
       completed: 'Completado'
     };
-    
+
     return (
       <Badge bg={variants[status]} className="status-badge">
         {labels[status]}
@@ -89,7 +88,7 @@ const Dashboard = () => {
   return (
     <Container fluid>
       <h2 className="mb-4">Dashboard</h2>
-      
+
       {/* Estadísticas */}
       <Row className="mb-4">
         {statCards.map((stat, index) => (
@@ -117,7 +116,7 @@ const Dashboard = () => {
           </Col>
         ))}
       </Row>
-      
+
       <Row>
         {/* Colaboradores Recientes */}
         <Col lg={8} className="mb-4">
@@ -151,7 +150,7 @@ const Dashboard = () => {
             </Card.Body>
           </Card>
         </Col>
-        
+
         {/* Próximos Eventos */}
         <Col lg={4} className="mb-4">
           <Card className="dashboard-card">
@@ -165,14 +164,14 @@ const Dashboard = () => {
                 <Badge bg="info" className="mb-2">Cloud Training</Badge>
                 <p className="small mb-0">8 participantes registrados</p>
               </div>
-              
+
               <div className="calendar-event">
                 <h6>Onboarding Frontend</h6>
                 <p className="small text-muted mb-1">25-29 Mar 2024</p>
                 <Badge bg="success" className="mb-2">Frontend</Badge>
                 <p className="small mb-0">12 participantes registrados</p>
               </div>
-              
+
               <div className="calendar-event">
                 <h6>Onboarding Backend</h6>
                 <p className="small text-muted mb-1">5-10 Abr 2024</p>

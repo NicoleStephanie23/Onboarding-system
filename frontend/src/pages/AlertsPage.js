@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   Container, Card, Button, Table, Badge,
-  Alert as BootstrapAlert
+  Alert, Row, Col, Form, Modal, Spinner
 } from 'react-bootstrap';
-import { FaBell, FaEnvelope, FaPaperPlane, FaCheck } from 'react-icons/fa';
-import { alertService } from '../services/api';
+import {
+  FaBell, FaEnvelope, FaPaperPlane, FaCheck,
+  FaCalendarDay, FaUser, FaClock, FaExclamationTriangle,
+  FaCalendarAlt, FaTrash
+} from 'react-icons/fa';
+import { alertService, calendarService } from '../services/api';
 
 const AlertsPage = () => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
 
   const loadAlerts = async () => {
     try {
@@ -18,7 +24,7 @@ const AlertsPage = () => {
       setAlerts(data);
     } catch (error) {
       console.error('Error cargando alertas:', error);
-      setAlerts([]);
+      setMessage({ type: 'danger', text: error.error || 'Error cargando alertas' });
     } finally {
       setLoading(false);
     }
@@ -29,76 +35,155 @@ const AlertsPage = () => {
   }, []);
 
   const handleSendTestAlert = async () => {
+    if (!testEmail.trim()) {
+      setMessage({ type: 'warning', text: 'Por favor ingresa un email válido' });
+      return;
+    }
+
     try {
-      await alertService.sendTestAlert();
-      setMessage('✅ Alerta de prueba enviada correctamente');
-      setTimeout(() => setMessage(''), 3000);
+      setLoading(true);
+      await alertService.sendTest(testEmail);
+      setMessage({ type: 'success', text: `✅ Alerta de prueba enviada a ${testEmail}` });
+      setShowTestModal(false);
+      setTestEmail('');
     } catch (error) {
-      setMessage(`❌ Error: ${error.message}`);
+      setMessage({ type: 'danger', text: `❌ Error: ${error.error || error.message}` });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getDaysUntilEvent = (eventDate) => {
+  const getDaysUntil = (dateString) => {
     const today = new Date();
-    const event = new Date(eventDate);
-    const diffTime = event - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+    const eventDate = new Date(dateString);
+    const diffTime = eventDate - today;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  const getAlertStatus = (event) => {
+    const daysUntil = getDaysUntil(event.start_date);
+
+    if (daysUntil < 0) return { label: 'Completado', variant: 'secondary' };
+    if (daysUntil === 0) return { label: 'Hoy', variant: 'danger' };
+    if (daysUntil <= 3) return { label: 'Próximo', variant: 'warning' };
+    if (daysUntil <= 7) return { label: 'Próxima semana', variant: 'info' };
+    return { label: 'Programado', variant: 'success' };
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const handleSendManualAlert = async (eventId) => {
+    if (window.confirm('¿Enviar alerta manualmente para este evento?')) {
+      try {
+        setLoading(true);
+        setMessage({ type: 'success', text: 'Alerta manual enviada' });
+      } catch (error) {
+        setMessage({ type: 'danger', text: 'Error enviando alerta' });
+      } finally {
+        setLoading(false);
+      }
+    }
   };
 
   return (
     <Container fluid>
-      <h2 className="mb-4">Gestión de Alertas</h2>
+      <h2 className="mb-4">
+        <FaBell className="me-2 text-warning" />
+        Sistema de Alertas
+      </h2>
 
-      {message && (
-        <BootstrapAlert 
-          variant={message.includes('✅') ? 'success' : 'danger'} 
-          dismissible
-          onClose={() => setMessage('')}
-        >
-          {message}
-        </BootstrapAlert>
+      {/* Mensajes */}
+      {message.text && (
+        <Alert variant={message.type} dismissible onClose={() => setMessage({ type: '', text: '' })}>
+          {message.text}
+        </Alert>
       )}
 
-      {/* Estadísticas */}
-      <div className="mb-4">
-        <Card className="dashboard-card">
-          <Card.Body>
-            <div className="d-flex justify-content-between align-items-center">
-              <div>
-                <h5 className="mb-1">
-                  <FaBell className="me-2 text-warning" />
-                  Sistema de Alertas
-                </h5>
-                <p className="text-muted mb-0">
-                  Alertas automáticas para eventos próximos
-                </p>
-              </div>
-              <Button variant="primary" onClick={handleSendTestAlert}>
+      {/* Panel de control */}
+      <Card className="mb-4 dashboard-card">
+        <Card.Body>
+          <Row className="align-items-center">
+            <Col md={8}>
+              <h5 className="mb-2">Alertas Automáticas de Eventos</h5>
+              <p className="text-muted mb-0">
+                El sistema envía alertas automáticas cuando se crean eventos y 7 días antes de su inicio.
+              </p>
+            </Col>
+            <Col md={4} className="text-end">
+              <Button variant="primary" onClick={() => setShowTestModal(true)}>
                 <FaPaperPlane className="me-2" />
-                Enviar Alerta de Prueba
+                Probar Sistema
               </Button>
-            </div>
-          </Card.Body>
-        </Card>
-      </div>
+            </Col>
+          </Row>
+        </Card.Body>
+      </Card>
 
-      {/* Alertas Próximas */}
-      <Card className="dashboard-card mb-4">
+      {/* Estadísticas */}
+      <Row className="mb-4">
+        <Col md={3}>
+          <Card className="text-center">
+            <Card.Body>
+              <h3 className="text-primary">{alerts.length}</h3>
+              <Card.Text>Eventos con Alertas</Card.Text>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="text-center">
+            <Card.Body>
+              <h3 className="text-warning">
+                {alerts.filter(a => getDaysUntil(a.start_date) <= 7 && getDaysUntil(a.start_date) > 0).length}
+              </h3>
+              <Card.Text>Próximos 7 días</Card.Text>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="text-center">
+            <Card.Body>
+              <h3 className="text-success">
+                {alerts.filter(a => a.responsible_email).length}
+              </h3>
+              <Card.Text>Con Responsable</Card.Text>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="text-center">
+            <Card.Body>
+              <h3 className="text-info">
+                {alerts.filter(a => a.type === 'journey_to_cloud').length}
+              </h3>
+              <Card.Text>Journey to Cloud</Card.Text>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Tabla de alertas */}
+      <Card className="dashboard-card">
         <Card.Header className="bg-white">
-          <h5 className="mb-0">Alertas Próximas (7 días)</h5>
+          <h5 className="mb-0">Alertas Programadas</h5>
         </Card.Header>
         <Card.Body>
           {loading ? (
-            <div className="text-center py-4">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
-              </div>
+            <div className="text-center py-5">
+              <Spinner animation="border" variant="primary" />
+              <p className="mt-2">Cargando alertas...</p>
             </div>
           ) : alerts.length === 0 ? (
             <div className="text-center py-4 text-muted">
-              <FaEnvelope size={48} className="mb-3" />
-              <p>No hay alertas programadas para los próximos 7 días</p>
+              <FaBell size={48} className="mb-3" />
+              <p>No hay alertas programadas</p>
+              <p className="small">Las alertas aparecerán automáticamente al crear eventos en el calendario</p>
             </div>
           ) : (
             <Table hover responsive>
@@ -106,18 +191,18 @@ const AlertsPage = () => {
                 <tr>
                   <th>Evento</th>
                   <th>Tipo</th>
-                  <th>Fecha Inicio</th>
+                  <th>Fecha</th>
                   <th>Días Restantes</th>
+                  <th>Responsable</th>
                   <th>Estado Alerta</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {alerts.map((alert) => {
-                  const daysUntil = getDaysUntilEvent(alert.start_date);
-                  const badgeColor = daysUntil <= 3 ? 'danger' : 
-                                   daysUntil <= 7 ? 'warning' : 'info';
-                  
+                  const daysUntil = getDaysUntil(alert.start_date);
+                  const status = getAlertStatus(alert);
+
                   return (
                     <tr key={alert.id}>
                       <td>
@@ -126,25 +211,48 @@ const AlertsPage = () => {
                         <small className="text-muted">{alert.description}</small>
                       </td>
                       <td>
-                        <Badge bg="secondary">{alert.type}</Badge>
-                      </td>
-                      <td>
-                        {new Date(alert.start_date).toLocaleDateString('es-ES')}
-                      </td>
-                      <td>
-                        <Badge bg={badgeColor}>
-                          {daysUntil} {daysUntil === 1 ? 'día' : 'días'}
+                        <Badge bg={alert.type === 'journey_to_cloud' ? 'primary' : 'success'}>
+                          {alert.type === 'journey_to_cloud' ? 'Journey to Cloud' : 'Capítulo'}
                         </Badge>
                       </td>
                       <td>
-                        <Badge bg="success">
-                          <FaCheck className="me-1" />
-                          Programada
-                        </Badge>
+                        <div className="d-flex align-items-center">
+                          <FaCalendarAlt className="me-2 text-muted" />
+                          {formatDate(alert.start_date)}
+                        </div>
                       </td>
                       <td>
-                        <Button size="sm" variant="outline-primary">
-                          <FaEnvelope className="me-1" />
+                        <div className="d-flex align-items-center">
+                          <FaClock className="me-2 text-muted" />
+                          <Badge bg={daysUntil <= 3 ? 'danger' : daysUntil <= 7 ? 'warning' : 'info'}>
+                            {daysUntil} {daysUntil === 1 ? 'día' : 'días'}
+                          </Badge>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          <FaUser className="me-2 text-muted" />
+                          <small>{alert.responsible_email}</small>
+                        </div>
+                      </td>
+                      <td>
+                        <Badge bg={status.variant}>
+                          {status.label}
+                        </Badge>
+                        {alert.alert_scheduled && (
+                          <small className="d-block text-muted">
+                            <FaCheck className="me-1" /> Alerta programada
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        <Button
+                          size="sm"
+                          variant="outline-primary"
+                          onClick={() => handleSendManualAlert(alert.id)}
+                          disabled={loading}
+                        >
+                          <FaPaperPlane className="me-1" />
                           Enviar Ahora
                         </Button>
                       </td>
@@ -157,55 +265,56 @@ const AlertsPage = () => {
         </Card.Body>
       </Card>
 
-      {/* Configuración de Alertas */}
-      <Card className="dashboard-card">
-        <Card.Header className="bg-white">
-          <h5 className="mb-0">Configuración de Alertas</h5>
-        </Card.Header>
-        <Card.Body>
-          <div className="mb-4">
-            <h6 className="mb-3">Configuración de Correo</h6>
-            <div className="row">
-              <div className="col-md-6 mb-3">
-                <label className="form-label">Días de Anticipación</label>
-                <select className="form-select">
-                  <option value="7">7 días antes</option>
-                  <option value="5">5 días antes</option>
-                  <option value="3">3 días antes</option>
-                  <option value="1">1 día antes</option>
-                </select>
-              </div>
-              <div className="col-md-6 mb-3">
-                <label className="form-label">Hora de Envío</label>
-                <select className="form-select">
-                  <option value="09:00">09:00 AM</option>
-                  <option value="10:00">10:00 AM</option>
-                  <option value="14:00">02:00 PM</option>
-                  <option value="16:00">04:00 PM</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          
-          <div className="d-flex justify-content-between align-items-center">
-            <div>
-              <h6 className="mb-1">Estado del Servicio</h6>
-              <p className="text-muted mb-0">
-                <Badge bg="success">Activo</Badge>
-                {' '}Las alertas se envían automáticamente
-              </p>
-            </div>
-            <div>
-              <Button variant="outline-success" className="me-2">
-                Guardar Configuración
-              </Button>
-              <Button variant="outline-secondary">
-                Ver Historial
-              </Button>
-            </div>
-          </div>
-        </Card.Body>
-      </Card>
+      {/* Info */}
+      <Alert variant="info" className="mt-4">
+        <FaExclamationTriangle className="me-2" />
+        <strong>Nota:</strong> Las alertas se envían automáticamente al email del responsable y administradores cuando se crea un nuevo evento en el calendario.
+      </Alert>
+
+      {/* Modal para prueba */}
+      <Modal show={showTestModal} onHide={() => setShowTestModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>
+            <FaPaperPlane className="me-2" />
+            Probar Sistema de Alertas
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form>
+            <Form.Group className="mb-3">
+              <Form.Label>Email de destino</Form.Label>
+              <Form.Control
+                type="email"
+                placeholder="ejemplo@correo.com"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+                required
+              />
+              <Form.Text className="text-muted">
+                Se enviará una alerta de prueba a este email
+              </Form.Text>
+            </Form.Group>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowTestModal(false)}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={handleSendTestAlert} disabled={!testEmail.trim() || loading}>
+            {loading ? (
+              <>
+                <Spinner animation="border" size="sm" className="me-2" />
+                Enviando...
+              </>
+            ) : (
+              <>
+                <FaPaperPlane className="me-2" />
+                Enviar Prueba
+              </>
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   );
 };

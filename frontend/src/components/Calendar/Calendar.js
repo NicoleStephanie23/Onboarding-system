@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Container, Row, Col, Card, Button,
-  Badge, Alert, Modal, Form
+  Badge, Alert, Modal, Form, Spinner
 } from 'react-bootstrap';
 import {
   FaChevronLeft, FaChevronRight,
@@ -15,6 +15,8 @@ const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showModal, setShowModal] = useState(false);
   const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -22,7 +24,8 @@ const Calendar = () => {
     endDate: '',
     type: 'chapter_technical',
     location: '',
-    participants: 0,
+    responsible_email: 'nicolstephanieb.q@gmail.com',
+    max_participants: 0,
     color: '#3498db'
   });
 
@@ -81,21 +84,44 @@ const Calendar = () => {
     }
   ];
 
-  useEffect(() => {
-    const savedEvents = localStorage.getItem('technical_onboardings');
-    if (savedEvents) {
-      setEvents(JSON.parse(savedEvents));
-    } else {
-      setEvents(predefinedEvents);
-      localStorage.setItem('technical_onboardings', JSON.stringify(predefinedEvents));
+  const loadEvents = async () => {
+    try {
+      setLoading(true);
+      const savedEvents = localStorage.getItem('technical_onboardings');
+      if (savedEvents) {
+        setEvents(JSON.parse(savedEvents));
+      } else {
+        setEvents(predefinedEvents);
+        localStorage.setItem('technical_onboardings', JSON.stringify(predefinedEvents));
+      }
+
+      try {
+        const response = await fetch('http://localhost:5000/api/calendar', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          }
+        });
+
+        if (response.ok) {
+          const backendEvents = await response.json();
+          const allEvents = [...events, ...backendEvents];
+          setEvents(allEvents);
+          localStorage.setItem('technical_onboardings', JSON.stringify(allEvents));
+        }
+      } catch (apiError) {
+        console.log('⚠️ Backend no disponible, usando eventos locales');
+      }
+
+    } catch (error) {
+      console.error('Error cargando eventos:', error);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    if (events.length > 0) {
-      localStorage.setItem('technical_onboardings', JSON.stringify(events));
-    }
-  }, [events]);
+    loadEvents();
+  }, []);
 
   const months = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -157,7 +183,7 @@ const Calendar = () => {
   };
 
   const validateEvent = () => {
-    const { title, startDate, endDate, type, participants } = formData;
+    const { title, startDate, endDate, responsible_email } = formData;
 
     if (!title.trim()) {
       alert('El título es obligatorio');
@@ -166,6 +192,11 @@ const Calendar = () => {
 
     if (!startDate || !endDate) {
       alert('Las fechas son obligatorias');
+      return false;
+    }
+
+    if (!responsible_email || !responsible_email.includes('@')) {
+      alert('Email responsable es obligatorio y debe ser válido');
       return false;
     }
 
@@ -183,7 +214,7 @@ const Calendar = () => {
       return false;
     }
 
-    if (participants < 0) {
+    if (formData.max_participants < 0) {
       alert('El número de participantes no puede ser negativo');
       return false;
     }
@@ -198,22 +229,64 @@ const Calendar = () => {
       return;
     }
 
-    const duration = calculateDuration(formData.startDate, formData.endDate);
-    const status = new Date(formData.startDate) <= new Date() ? 'active' : 'upcoming';
-
-    const newEvent = {
-      id: Date.now(),
-      ...formData,
-      participants: parseInt(formData.participants) || 0,
-      duration: duration,
-      status: status,
-      color: formData.type === 'journey_to_cloud' ? '#3498db' :
-        formData.type === 'chapter_technical' ? '#2ecc71' : '#9b59b6'
-    };
-
     try {
-      console.log('Guardando en BD:', newEvent);
-      setEvents([...events, newEvent]);
+      setSaving(true);
+
+      const duration = calculateDuration(formData.startDate, formData.endDate);
+      const status = new Date(formData.startDate) <= new Date() ? 'active' : 'upcoming';
+      const eventData = {
+        title: formData.title,
+        description: formData.description,
+        type: formData.type,
+        start_date: formData.startDate,
+        end_date: formData.endDate,
+        location: formData.location,
+        responsible_email: formData.responsible_email,
+        max_participants: parseInt(formData.max_participants) || 0
+      };
+
+      const newLocalEvent = {
+        id: Date.now(),
+        title: formData.title,
+        description: formData.description,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        type: formData.type,
+        location: formData.location,
+        participants: parseInt(formData.max_participants) || 0,
+        color: formData.type === 'journey_to_cloud' ? '#3498db' :
+          formData.type === 'chapter_technical' ? '#2ecc71' : '#9b59b6',
+        status: status,
+        duration: duration,
+        responsible_email: formData.responsible_email
+      };
+
+      try {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch('http://localhost:5000/api/calendar', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(eventData)
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('✅ Evento guardado en backend:', result);
+          newLocalEvent.id = result.event?.id || result.id || Date.now();
+        } else {
+          const error = await response.json();
+          console.warn('⚠️ Error guardando en backend, usando local:', error);
+        }
+      } catch (backendError) {
+        console.warn('⚠️ Backend no disponible, guardando solo local:', backendError.message);
+      }
+      const updatedEvents = [...events, newLocalEvent];
+      setEvents(updatedEvents);
+      localStorage.setItem('technical_onboardings', JSON.stringify(updatedEvents));
+
       setFormData({
         title: '',
         description: '',
@@ -221,18 +294,23 @@ const Calendar = () => {
         endDate: '',
         type: 'chapter_technical',
         location: '',
-        participants: 0,
+        responsible_email: 'nicolstephanieb.q@gmail.com',
+        max_participants: 0,
         color: '#3498db'
       });
 
       setShowModal(false);
 
-      alert('✅ Evento creado exitosamente');
+      alert('✅ Evento creado exitosamente\n📧 Alertas enviadas a tu email');
+
     } catch (error) {
-      console.error('Error al guardar evento:', error);
-      alert('❌ Error al crear el evento');
+      console.error('Error al crear evento:', error);
+      alert('❌ Error al crear el evento: ' + (error.message || 'Error desconocido'));
+    } finally {
+      setSaving(false);
     }
   };
+
   const monthName = months[currentDate.getMonth()];
   const year = currentDate.getFullYear();
   const daysInMonth = getDaysInMonth(currentDate);
@@ -246,8 +324,8 @@ const Calendar = () => {
   for (let i = 1; i <= daysInMonth; i++) {
     const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), i);
     const dayEvents = events.filter(event => {
-      const eventStart = new Date(event.startDate);
-      const eventEnd = new Date(event.endDate);
+      const eventStart = new Date(event.startDate || event.start_date);
+      const eventEnd = new Date(event.endDate || event.end_date);
       return dayDate >= eventStart && dayDate <= eventEnd;
     });
 
@@ -257,18 +335,30 @@ const Calendar = () => {
       events: dayEvents
     });
   }
+
   const activeEvents = events.filter(event => {
     const today = new Date();
-    const eventStart = new Date(event.startDate);
-    const eventEnd = new Date(event.endDate);
+    const eventStart = new Date(event.startDate || event.start_date);
+    const eventEnd = new Date(event.endDate || event.end_date);
     const isActive = today >= eventStart && today <= eventEnd;
-    const hasValidDuration = event.duration >= 5 && event.duration <= 7;
+    const duration = calculateDuration(
+      event.startDate || event.start_date,
+      event.endDate || event.end_date
+    );
+    const hasValidDuration = duration >= 5 && duration <= 7;
     return isActive && hasValidDuration;
   });
 
   const upcomingEvents = events
-    .filter(event => new Date(event.startDate) > new Date())
-    .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
+    .filter(event => {
+      const eventStart = new Date(event.startDate || event.start_date);
+      return eventStart > new Date();
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.startDate || a.start_date);
+      const dateB = new Date(b.startDate || b.start_date);
+      return dateA - dateB;
+    })
     .slice(0, 4);
 
   const getEventTypeLabel = (type) => {
@@ -284,17 +374,28 @@ const Calendar = () => {
     const variants = {
       'active': 'success',
       'upcoming': 'warning',
-      'completed': 'secondary'
+      'completed': 'secondary',
+      'scheduled': 'primary'
     };
 
     const labels = {
       'active': 'En Curso',
       'upcoming': 'Próximo',
-      'completed': 'Completado'
+      'completed': 'Completado',
+      'scheduled': 'Programado'
     };
 
-    return <Badge bg={variants[status]}>{labels[status]}</Badge>;
+    return <Badge bg={variants[status] || 'secondary'}>{labels[status] || status}</Badge>;
   };
+
+  if (loading) {
+    return (
+      <Container fluid className="text-center py-5">
+        <Spinner animation="border" variant="primary" />
+        <p className="mt-2">Cargando calendario...</p>
+      </Container>
+    );
+  }
 
   return (
     <Container fluid>
@@ -407,16 +508,22 @@ const Calendar = () => {
 
                       {hasEvents && (
                         <div className="calendar-events">
-                          {day.events.slice(0, 2).map((event, idx) => (
-                            <div
-                              key={idx}
-                              className="calendar-event-badge"
-                              style={{ backgroundColor: event.color }}
-                              title={`${event.title} (${event.duration} días)`}
-                            >
-                              <small>{event.title}</small>
-                            </div>
-                          ))}
+                          {day.events.slice(0, 2).map((event, idx) => {
+                            const duration = calculateDuration(
+                              event.startDate || event.start_date,
+                              event.endDate || event.end_date
+                            );
+                            return (
+                              <div
+                                key={idx}
+                                className="calendar-event-badge"
+                                style={{ backgroundColor: event.color || '#3498db' }}
+                                title={`${event.title} (${duration} días)`}
+                              >
+                                <small>{event.title}</small>
+                              </div>
+                            );
+                          })}
                           {day.events.length > 2 && (
                             <small className="text-muted d-block">
                               +{day.events.length - 2} más
@@ -446,42 +553,50 @@ const Calendar = () => {
                 </Alert>
               ) : (
                 <div className="active-sessions-grid">
-                  {activeEvents.map(event => (
-                    <div key={event.id} className="active-session p-3 border rounded mb-3">
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                          <h6 className="mb-1">{event.title}</h6>
-                          <p className="text-muted small mb-2">{event.description}</p>
+                  {activeEvents.map(event => {
+                    const duration = calculateDuration(
+                      event.startDate || event.start_date,
+                      event.endDate || event.end_date
+                    );
+                    return (
+                      <div key={event.id} className="active-session p-3 border rounded mb-3">
+                        <div className="d-flex justify-content-between align-items-start mb-2">
+                          <div>
+                            <h6 className="mb-1">{event.title}</h6>
+                            <p className="text-muted small mb-2">{event.description}</p>
+                          </div>
+                          <div className="d-flex gap-2">
+                            <Badge bg="light" text="dark">
+                              {duration} días
+                            </Badge>
+                            {getStatusBadge(event.status)}
+                          </div>
                         </div>
-                        <div className="d-flex gap-2">
-                          <Badge bg="light" text="dark">
-                            {event.duration} días
-                          </Badge>
-                          {getStatusBadge(event.status)}
-                        </div>
-                      </div>
 
-                      <div className="d-flex flex-wrap gap-3">
-                        <small className="text-muted">
-                          <FaCalendarAlt className="me-1" />
-                          {new Date(event.startDate).toLocaleDateString()} -
-                          {new Date(event.endDate).toLocaleDateString()}
-                        </small>
-                        <small className="text-muted">
-                          <FaMapMarkerAlt className="me-1" />
-                          {event.location}
-                        </small>
-                        <small className="text-muted">
-                          <FaUsers className="me-1" />
-                          {event.participants} participantes
-                        </small>
-                        <small className="text-muted">
-                          <FaTag className="me-1" />
-                          {getEventTypeLabel(event.type)}
-                        </small>
+                        <div className="d-flex flex-wrap gap-3">
+                          <small className="text-muted">
+                            <FaCalendarAlt className="me-1" />
+                            {new Date(event.startDate || event.start_date).toLocaleDateString()} -
+                            {new Date(event.endDate || event.end_date).toLocaleDateString()}
+                          </small>
+                          {event.location && (
+                            <small className="text-muted">
+                              <FaMapMarkerAlt className="me-1" />
+                              {event.location}
+                            </small>
+                          )}
+                          <small className="text-muted">
+                            <FaUsers className="me-1" />
+                            {(event.participants || event.max_participants || 0)} participantes
+                          </small>
+                          <small className="text-muted">
+                            <FaTag className="me-1" />
+                            {getEventTypeLabel(event.type)}
+                          </small>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Card.Body>
@@ -504,40 +619,48 @@ const Calendar = () => {
                 </Alert>
               ) : (
                 <div className="upcoming-events-list">
-                  {upcomingEvents.map(event => (
-                    <div key={event.id} className="upcoming-event mb-3 pb-3 border-bottom">
-                      <div className="d-flex align-items-start">
-                        <div
-                          className="event-color-indicator me-3"
-                          style={{
-                            backgroundColor: event.color,
-                            width: '8px',
-                            height: '60px',
-                            borderRadius: '4px'
-                          }}
-                        ></div>
-                        <div className="flex-grow-1">
-                          <h6 className="mb-1">{event.title}</h6>
-                          <div className="d-flex gap-2 mb-2">
-                            <Badge bg="light" text="dark">
-                              {getEventTypeLabel(event.type)}
-                            </Badge>
-                            <Badge bg="light" text="dark">
-                              {event.duration} días
-                            </Badge>
-                          </div>
-                          <div className="d-flex flex-wrap gap-2">
-                            <small className="text-muted">
-                              📅 {new Date(event.startDate).toLocaleDateString()}
-                            </small>
-                            <small className="text-muted">
-                              📍 {event.location}
-                            </small>
+                  {upcomingEvents.map(event => {
+                    const duration = calculateDuration(
+                      event.startDate || event.start_date,
+                      event.endDate || event.end_date
+                    );
+                    return (
+                      <div key={event.id} className="upcoming-event mb-3 pb-3 border-bottom">
+                        <div className="d-flex align-items-start">
+                          <div
+                            className="event-color-indicator me-3"
+                            style={{
+                              backgroundColor: event.color || '#3498db',
+                              width: '8px',
+                              height: '60px',
+                              borderRadius: '4px'
+                            }}
+                          ></div>
+                          <div className="flex-grow-1">
+                            <h6 className="mb-1">{event.title}</h6>
+                            <div className="d-flex gap-2 mb-2">
+                              <Badge bg="light" text="dark">
+                                {getEventTypeLabel(event.type)}
+                              </Badge>
+                              <Badge bg="light" text="dark">
+                                {duration} días
+                              </Badge>
+                            </div>
+                            <div className="d-flex flex-wrap gap-2">
+                              <small className="text-muted">
+                                📅 {new Date(event.startDate || event.start_date).toLocaleDateString()}
+                              </small>
+                              {event.location && (
+                                <small className="text-muted">
+                                  📍 {event.location}
+                                </small>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Card.Body>
@@ -569,7 +692,7 @@ const Calendar = () => {
         </Col>
       </Row>
 
-      {/* Modal para Nuevo Evento */}
+      {/* Modal para Nuevo Evento - CON LOS NOMBRES ORIGINALES */}
       <Modal show={showModal} onHide={() => setShowModal(false)} size="lg">
         <Form onSubmit={handleSubmit}>
           <Modal.Header closeButton>
@@ -590,6 +713,7 @@ const Calendar = () => {
                     onChange={handleInputChange}
                     placeholder="Ej: Journey to Cloud - Batch 2024"
                     required
+                    disabled={saving}
                   />
                 </Form.Group>
               </Col>
@@ -601,6 +725,7 @@ const Calendar = () => {
                     value={formData.type}
                     onChange={handleInputChange}
                     required
+                    disabled={saving}
                   >
                     <option value="chapter_technical">Capítulo Técnico</option>
                     <option value="journey_to_cloud">Journey to Cloud</option>
@@ -619,6 +744,7 @@ const Calendar = () => {
                 value={formData.description}
                 onChange={handleInputChange}
                 placeholder="Descripción detallada del contenido..."
+                disabled={saving}
               />
             </Form.Group>
 
@@ -633,6 +759,7 @@ const Calendar = () => {
                     onChange={handleInputChange}
                     required
                     min={new Date().toISOString().split('T')[0]}
+                    disabled={saving}
                   />
                   <Form.Text className="text-muted">
                     La fecha de fin se calculará automáticamente
@@ -648,6 +775,7 @@ const Calendar = () => {
                     value={formData.endDate}
                     onChange={handleInputChange}
                     required
+                    disabled={saving}
                   />
                   <Form.Text className="text-muted">
                     Duración: {formData.startDate && formData.endDate ?
@@ -668,54 +796,69 @@ const Calendar = () => {
                     value={formData.location}
                     onChange={handleInputChange}
                     placeholder="Sala de conferencias..."
+                    disabled={saving}
                   />
                 </Form.Group>
               </Col>
               <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Participantes Estimados</Form.Label>
+                  <Form.Label>Email Responsable *</Form.Label>
+                  <Form.Control
+                    type="email"
+                    name="responsible_email"
+                    value={formData.responsible_email}
+                    onChange={handleInputChange}
+                    placeholder="responsable@empresa.com"
+                    required
+                    disabled={saving}
+                  />
+                  <Form.Text className="text-muted">
+                    Se enviará alerta a este email
+                  </Form.Text>
+                </Form.Group>
+              </Col>
+            </Row>
+
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Participantes Máximos</Form.Label>
                   <Form.Control
                     type="number"
-                    name="participants"
-                    value={formData.participants}
+                    name="max_participants"
+                    value={formData.max_participants}
                     onChange={handleInputChange}
                     min="0"
                     placeholder="Ej: 15"
+                    disabled={saving}
                   />
                 </Form.Group>
               </Col>
             </Row>
 
-            <Form.Group className="mb-3">
-              <Form.Label>Color del Evento en Calendario</Form.Label>
-              <div className="d-flex align-items-center">
-                <Form.Control
-                  type="color"
-                  name="color"
-                  value={formData.color}
-                  onChange={handleInputChange}
-                  style={{ width: '60px', height: '40px' }}
-                />
-                <small className="ms-2 text-muted">
-                  Journey to Cloud: Azul | Capítulos: Verde | Workshops: Púrpura
-                </small>
-              </div>
-            </Form.Group>
-
             <Alert variant="info" className="mt-3">
               <small>
-                <strong>Importante:</strong> Los onboardings técnicos deben tener una duración de 5 a 7 días.
-                El sistema ajustará automáticamente la fecha de fin según el tipo seleccionado.
+                <strong>Importante:</strong> Al crear el evento, se enviará automáticamente una alerta
+                al email del responsable y aparecerá en la página de alertas.
               </small>
             </Alert>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>
+            <Button variant="secondary" onClick={() => setShowModal(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button variant="primary" type="submit">
-              <FaPlus className="me-2" />
-              Crear Onboarding
+            <Button variant="primary" type="submit" disabled={saving}>
+              {saving ? (
+                <>
+                  <Spinner animation="border" size="sm" className="me-2" />
+                  Creando...
+                </>
+              ) : (
+                <>
+                  <FaPlus className="me-2" />
+                  Crear Onboarding
+                </>
+              )}
             </Button>
           </Modal.Footer>
         </Form>

@@ -17,8 +17,18 @@ const Sidebar = () => {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
     { path: '/collaborators', label: 'Colaboradores', icon: <FaUsers /> },
-    { path: '/onboarding/technical', label: 'Onboarding Técnico', icon: <FaGraduationCap />, badge: 'Nuevo' },
-    { path: '/onboarding/welcome', label: 'Onboarding Bienvenida', icon: <FaHandshake />, badge: 'Nuevo' },
+    {
+      path: '/onboarding/technical',
+      label: 'Onboarding Técnico',
+      icon: <FaGraduationCap />,
+      badge: 'Nuevo'
+    },
+    {
+      path: '/onboarding/welcome',
+      label: 'Onboarding Bienvenida',
+      icon: <FaHandshake />,
+      badge: 'Nuevo'
+    },
     { path: '/calendar', label: 'Calendario', icon: <FaCalendarAlt /> },
     { path: '/alerts', label: 'Alertas', icon: <FaBell /> },
     { path: '/settings', label: 'Configuración', icon: <FaCog /> }
@@ -42,7 +52,10 @@ const Sidebar = () => {
           <h5 className="text-light mb-3">Menú Principal</h5>
           <Nav className="flex-column">
             {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
+              const isActive = location.pathname === item.path ||
+                (item.path !== '/dashboard' &&
+                  location.pathname.startsWith(item.path));
+
               return (
                 <Nav.Link
                   key={item.path}
@@ -91,7 +104,7 @@ const Sidebar = () => {
         <div className="mt-auto px-2 pt-3 border-top" style={{ borderColor: '#34495e' }}>
           <div className="text-center">
             <small className="text-muted d-block">Versión 1.0.0</small>
-            <small className="text-muted">© 2024 Onboarding System</small>
+            <small className="text-muted">© 2025 Onboarding System Stephanie</small>
           </div>
         </div>
       </div>
