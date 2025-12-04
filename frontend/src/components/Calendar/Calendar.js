@@ -11,6 +11,7 @@ import {
 } from 'react-icons/fa';
 import '../../styles/calendar.css';
 import { eventService } from '../../services/eventService';
+import { notificationService } from '../../services/notificationService';
 
 const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -251,6 +252,7 @@ const Calendar = () => {
       };
 
       const newLocalEvent = eventService.createEvent(eventData);
+      notificationService.showEventCreated(newLocalEvent);
 
       try {
         const token = localStorage.getItem('auth_token');
@@ -273,13 +275,10 @@ const Calendar = () => {
         });
 
         if (response.ok) {
-          const result = await response.json();
-          console.log('✅ Evento también guardado en backend:', result);
-        } else {
-          console.warn('⚠️ Evento solo guardado localmente');
+          console.log('✅ Evento también guardado en backend');
         }
       } catch (backendError) {
-        console.log('ℹ️ Evento guardado solo en memoria:', backendError.message);
+        console.log('ℹ️ Evento guardado solo en memoria');
       }
       const updatedEvents = [...events, newLocalEvent];
       setEvents(updatedEvents);
@@ -296,11 +295,14 @@ const Calendar = () => {
       });
 
       setShowModal(false);
-      alert(`✅ Evento "${formData.title}" creado exitosamente!\n\n📅 Fecha: ${formData.startDate}\n👤 Responsable: ${formData.responsible_email}\n📧 Alertas: Se mostrarán en la página de Alertas`);
 
     } catch (error) {
       console.error('Error al crear evento:', error);
-      alert('❌ Error al crear el evento: ' + (error.message || 'Error desconocido'));
+      notificationService.showNotification(
+        '❌ Error',
+        `No se pudo crear el evento: ${error.message}`,
+        'error'
+      );
     } finally {
       setSaving(false);
     }
@@ -807,9 +809,7 @@ const Calendar = () => {
                     required
                     disabled={saving}
                   />
-                  <Form.Text className="text-muted">
-                    Se enviará alerta a este email
-                  </Form.Text>
+
                 </Form.Group>
               </Col>
             </Row>

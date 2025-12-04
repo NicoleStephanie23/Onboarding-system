@@ -10,6 +10,7 @@ import './styles/App.css';
 import 'animate.css/animate.min.css';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import NotificationCenter from './components/Common/NotificationCenter';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import CollaboratorsPage from './pages/CollaboratorsPage';
@@ -55,18 +56,18 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        {/* NotificationCenter siempre visible */}
+        <NotificationCenter />
+
         <Routes>
-          {/* Ruta de login (pública) */}
           <Route path="/login" element={
             <PublicRoute>
               <LoginPage />
             </PublicRoute>
           } />
 
-          {/* Ruta raíz - redirige al dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" />} />
 
-          {/* Rutas protegidas */}
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />
@@ -97,7 +98,6 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Nuevas rutas de Onboarding */}
           <Route path="/onboarding/technical" element={
             <ProtectedRoute>
               <OnboardingTechnicalPage />
@@ -110,10 +110,8 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Ruta para manejar /onboarding sin subruta */}
           <Route path="/onboarding" element={<Navigate to="/onboarding/technical" />} />
 
-          {/* Ruta 404 */}
           <Route path="*" element={
             <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
               <div className="text-center">
