@@ -218,7 +218,9 @@ El sistema está estructurado en **tres capas principales**:
 **GET**  `/debug/users` Debug usuarios
 
 ---------------------------------------------------------------------------------------
+## Ejemplo de funcionamiento en Postman
 
+<img width="851" height="592" alt="Captura de pantalla 2025-12-05 a las 12 17 54 p m" src="https://github.com/user-attachments/assets/30cf18bd-722c-4579-a8f2-c6df8e9f494d" />
 
 
 
