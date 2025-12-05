@@ -96,7 +96,7 @@ El sistema está estructurado en **tres capas principales**:
     -   status, scheduled_for, sent_at
 
 
-# COMPONENTES DEL SISTEMA
+# 3. COMPONENTES DEL SISTEMA
 
 ## Dashboard Principal
 
@@ -144,7 +144,7 @@ El sistema está estructurado en **tres capas principales**:
 
 
 
-## ENDPOINTS
+## 4. ENDPOINTS
 
 
 **POST**  `/auth/login` Iniciar sesión
