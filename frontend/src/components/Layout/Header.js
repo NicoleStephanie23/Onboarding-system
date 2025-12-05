@@ -10,10 +10,12 @@ import {
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTimeout } from '../../contexts/TimeoutContext';
 
 const Header = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { resetTimers } = useTimeout();
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -199,8 +201,11 @@ const Header = () => {
       handleSearch(e);
     }
   };
-
   const handleLogout = async () => {
+    if (resetTimers) {
+      console.log('🔄 Limpiando timers de inactividad antes de cerrar sesión');
+    }
+
     await logout();
     navigate('/login');
   };

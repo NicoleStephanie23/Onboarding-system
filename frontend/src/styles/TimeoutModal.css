@@ -1,0 +1,35 @@
+.timeout-modal .modal-content {
+    border: 2px solid #ffc107;
+    border-radius: 10px;
+    box-shadow: 0 5px 20px rgba(255, 193, 7, 0.3);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 5px 20px rgba(255, 193, 7, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 5px 25px rgba(255, 193, 7, 0.5);
+    }
+
+    100% {
+        box-shadow: 0 5px 20px rgba(255, 193, 7, 0.3);
+    }
+}
+
+.timeout-modal .modal-header {
+    border-bottom: 2px solid #ffc107;
+}
+
+.timeout-modal .btn-warning {
+    background: linear-gradient(135deg, #ffc107, #ff9800);
+    border: none;
+    font-weight: 600;
+}
+
+.timeout-modal .btn-warning:hover {
+    background: linear-gradient(135deg, #e0a800, #f57c00);
+    transform: translateY(-1px);
+}

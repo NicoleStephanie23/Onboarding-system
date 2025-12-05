@@ -10,6 +10,9 @@ import './styles/App.css';
 import 'animate.css/animate.min.css';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { TimeoutProvider, useTimeout } from './contexts/TimeoutContext';
+import { useForceLogout } from './hooks/useForceLogout';
+import TimeoutModal from './components/Common/TimeoutModal';
 import NotificationCenter from './components/Common/NotificationCenter';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
@@ -32,6 +35,47 @@ const Spinner = ({ message = 'Cargando...' }) => {
   );
 };
 
+const AuthenticatedTimeoutWrapper = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  const { showWarning, handleStayLoggedIn } = useTimeout();
+  const forceLogout = useForceLogout();
+
+  const handleLogoutFromModal = async () => {
+    console.log('🔄 Iniciando cierre de sesión desde modal...');
+    await forceLogout();
+  };
+
+  if (!isAuthenticated) {
+    return children;
+  }
+
+  return (
+    <>
+      {children}
+      <TimeoutModal
+        show={showWarning}
+        onStayLoggedIn={handleStayLoggedIn}
+        onLogout={handleLogoutFromModal}
+      />
+    </>
+  );
+};
+
+const ConditionalTimeoutProvider = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) {
+    return children;
+  }
+
+  return (
+    <TimeoutProvider>
+      <AuthenticatedTimeoutWrapper>
+        {children}
+      </AuthenticatedTimeoutWrapper>
+    </TimeoutProvider>
+  );
+};
+
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
@@ -39,7 +83,15 @@ const ProtectedRoute = ({ children }) => {
     return <Spinner message="Verificando autenticación..." />;
   }
 
-  return isAuthenticated ? <Layout>{children}</Layout> : <Navigate to="/login" />;
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+
+  return (
+    <ConditionalTimeoutProvider>
+      <Layout>{children}</Layout>
+    </ConditionalTimeoutProvider>
+  );
 };
 
 const PublicRoute = ({ children }) => {
@@ -60,58 +112,69 @@ function App() {
         <NotificationCenter />
 
         <Routes>
+          {/* Ruta de login - NO tiene TimeoutProvider */}
           <Route path="/login" element={
             <PublicRoute>
               <LoginPage />
             </PublicRoute>
           } />
 
+          {/* Redirección raíz */}
           <Route path="/" element={<Navigate to="/dashboard" />} />
 
+          {/* Dashboard principal - TIENE TimeoutProvider */}
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />
             </ProtectedRoute>
           } />
 
+          {/* Gestión de colaboradores - TIENE TimeoutProvider */}
           <Route path="/collaborators" element={
             <ProtectedRoute>
               <CollaboratorsPage />
             </ProtectedRoute>
           } />
 
+          {/* Calendario de eventos - TIENE TimeoutProvider */}
           <Route path="/calendar" element={
             <ProtectedRoute>
               <CalendarPage />
             </ProtectedRoute>
           } />
 
+          {/* Sistema de alertas - TIENE TimeoutProvider */}
           <Route path="/alerts" element={
             <ProtectedRoute>
               <AlertsPage />
             </ProtectedRoute>
           } />
 
+          {/* Configuración del sistema - TIENE TimeoutProvider */}
           <Route path="/settings" element={
             <ProtectedRoute>
               <SettingsPage />
             </ProtectedRoute>
           } />
 
+          {/* Onboarding técnico - TIENE TimeoutProvider */}
           <Route path="/onboarding/technical" element={
             <ProtectedRoute>
               <OnboardingTechnicalPage />
             </ProtectedRoute>
           } />
 
+          {/* Onboarding de bienvenida - TIENE TimeoutProvider */}
           <Route path="/onboarding/welcome" element={
             <ProtectedRoute>
               <OnboardingWelcomePage />
             </ProtectedRoute>
           } />
 
+          {/* Redirección para onboarding */}
           <Route path="/onboarding" element={<Navigate to="/onboarding/technical" />} />
 
+          {/* Ruta 404 - página no encontrada */}
           <Route path="*" element={
             <div className="d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
               <div className="text-center">
